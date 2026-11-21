@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: StaticShock
+message: "If you use this template, cite it as software."
+type: software
+authors:
+  - name: StaticShock contributors
+repository-code: https://github.com/MorenoLand/Moreno.StaticShock
+license: MIT
+version: 0.1.0
+abstract: >-
+  A template and toolkit for static recompilation of Windows PE programs to C, with a
+  native runtime, import bridge, RTTI inventory and evidence-backed verification.
+keywords:
+  - static recompilation
+  - reverse engineering
+  - binary translation
+  - PE
+  - x86
+  - C

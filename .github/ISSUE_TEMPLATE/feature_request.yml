@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a capability, a port or a better workflow.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep it about software you own. Do not propose piracy, licence bypasses or
+        redistribution of someone else's binaries or assets.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, and on which target or workflow?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should the tool do? Keep it concrete and testable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Existing workarounds, other tools, or a simpler option.
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or example
+      description: A trace, a document reference, a small synthetic sample or a command output.
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This applies to the template/toolkit, not only one proprietary target.
+          required: true
+        - label: This does not require committing an original binary, asset or key.
+          required: true
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Legal use
+      options:
+        - label: I own a legal copy of the software involved and may reverse engineer it.
+          required: true

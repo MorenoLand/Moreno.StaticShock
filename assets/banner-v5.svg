@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-label="Static Shock: PE to C to native">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="0.55" stop-color="#0a1526"/>
+      <stop offset="1" stop-color="#03060c"/>
+    </linearGradient>
+    <linearGradient id="suit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f7cff"/>
+      <stop offset="1" stop-color="#0a3f9e"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff27a"/>
+      <stop offset="1" stop-color="#ffc400"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#34d8ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#34d8ff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="10" height="10" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.15" fill="#7fe9ff" opacity="0.16"/>
+    </pattern>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#1c3555" stroke-width="1" opacity="0.35"/>
+    </pattern>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tiny" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="420" fill="url(#bg)"/>
+  <rect width="1600" height="420" fill="url(#grid)"/>
+  <g font-family="Consolas, 'Courier New', monospace" font-size="13" fill="#78a6d8" opacity="0.16">
+    <text x="40" y="52">mov eax, [0x401000]</text><text x="40" y="76">push ebp</text>
+    <text x="40" y="100">call 0x685e50</text><text x="40" y="124">fld dword ptr [esi+eax*4]</text>
+    <text x="40" y="148">jmp 0x4010c0</text><text x="40" y="172">ret</text>
+    <text x="1180" y="360">4D 5A 90 00 03 00 00 00</text><text x="1180" y="384">50 45 00 00 4C 01</text>
+    <text x="1320" y="52">.text</text><text x="1320" y="76">.rdata</text><text x="1320" y="100">.data</text>
+    <text x="1320" y="124">.reloc</text><text x="1320" y="148">.idata</text>
+  </g>
+  <rect width="1600" height="420" fill="url(#dots)" opacity="0.55"/>
+
+  <g opacity="0.9">
+    <circle cx="300" cy="225" r="210" fill="url(#glow)"/>
+    <path d="M150 120l-58 96 44 8-34 84 104-118-46-6 38-64z" fill="#31d8ff" opacity="0.75" filter="url(#tiny)"/>
+    <path d="M300 60l-34 58 28 6-22 50 64-74-28-4 22-36z" fill="#ffe95c" opacity="0.7" filter="url(#tiny)"/>
+    <path d="M440 340l-30 50 24 4-18 40 48-56-24-2 16-36z" fill="#31d8ff" opacity="0.65" filter="url(#tiny)"/>
+  </g>
+
+  <g font-family="Impact, 'Arial Black', 'Franklin Gothic Heavy', sans-serif" letter-spacing="2">
+    <text x="480" y="176" font-size="92" fill="#06101d" stroke="#06101d" stroke-width="14">STATIC</text>
+    <text x="480" y="176" font-size="92" fill="#ffe14d">STATIC</text>
+    <text x="480" y="268" font-size="92" fill="#06101d" stroke="#06101d" stroke-width="14">SHOCK</text>
+    <text x="480" y="268" font-size="92" fill="#5fe4ff">SHOCK</text>
+  </g>
+  <g font-family="Consolas, 'Courier New', monospace">
+    <rect x="520" y="300" width="560" height="44" rx="22" fill="#0b1a2c" stroke="#2d5f8f"/>
+    <text x="800" y="329" text-anchor="middle" font-size="20" fill="#d7f6ff" letter-spacing="2">PE  &#8594;  C  &#8594;  NATIVE</text>
+    <text x="800" y="378" text-anchor="middle" font-size="15" fill="#7fb8d8" letter-spacing="3">LIFT IT &#183; BUILD IT &#183; PROVE IT</text>
+  </g>
+</svg>

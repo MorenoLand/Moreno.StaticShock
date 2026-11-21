@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in the pipeline, runtime or host is wrong.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach the original executable, game assets, keys or proprietary code.
+        Use only software you own and may reverse engineer.
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Legal use
+      options:
+        - label: I own a legal copy of the software involved and may reverse engineer it.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: One paragraph. Name the stage (analysis, lift, build, boot, input, audio...).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and first incorrect value
+      description: The final crash is usually not the first wrong value. Include the evidence you have.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. python static_shock.py ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor output
+      description: Paste the complete output of `python static_shock.py doctor`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python, i686-w64-mingw32-gcc version, analysis backend and provider.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or crash report
+      description: Remove paths, usernames and any original content before pasting.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: clean
+    attributes:
+      label: Confirmation
+      options:
+        - label: I did not attach an original binary, asset or key.
+          required: true
+        - label: I read docs/10-debugging.md and included the first incorrect value, not only the final error.
+          required: false

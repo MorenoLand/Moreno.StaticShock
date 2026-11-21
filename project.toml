@@ -1,0 +1,96 @@
+# Copy this file to a new project and edit the values.
+# Addresses are absolute virtual addresses in the original 32-bit PE image.
+
+[project]
+name        = "Target"
+arch        = "x86"
+exe         = "target.exe"
+host_exe    = "TargetHost.exe"
+host_name   = "Target"
+image_base  = 0x400000
+entry       = 0x401000
+code_lo     = 0x401000
+code_hi     = 0x680000
+image_end   = 0xA40000
+guest_size  = 0x1000000
+tail_size   = 0x23F000
+icon        = ""
+
+[build]
+mingw32 = "D:/msys64/mingw32"
+libs    = ["psapi", "winmm", "ole32", "gdi32", "user32", "shell32", "advapi32", "comdlg32", "winspool"]
+cflags  = ["-O1", "-w"]
+stack   = 0x10000000
+heap    = 0x10000000
+
+[imports]
+cdecl_modules = ["msvcr80", "msvcp80", "openal32", "freetype6"]
+libs = ["libkernel32.a", "libuser32.a", "libgdi32.a", "libshell32.a", "libole32.a",
+        "libwinmm.a", "libcomdlg32.a", "libadvapi32.a", "libwinspool.a", "libdbghelp.a"]
+# Argument counts for cdecl imports that are not exported with a decorated name in the MinGW import libraries.
+[imports.nargs]
+alBufferData = 5
+alSourcei = 3
+alSourcef = 3
+alSourcefv = 3
+alSourcePlay = 1
+alSourceStop = 1
+alSourcePause = 1
+alSourceRewind = 1
+alSource3f = 5
+alGenBuffers = 2
+alGenSources = 2
+alDeleteBuffers = 2
+alDeleteSources = 2
+alGetError = 0
+alGetString = 1
+alGetSourcei = 3
+alGetSourcef = 3
+alGetBufferi = 3
+alGetListenerfv = 2
+alListenerfv = 2
+alListenerf = 3
+alSourceQueueBuffers = 3
+alSourceUnqueueBuffers = 3
+alcOpenDevice = 1
+alcCloseDevice = 1
+alcCreateContext = 2
+alcMakeContextCurrent = 1
+alcDestroyContext = 1
+alcGetCurrentContext = 0
+alcGetContextsDevice = 1
+
+[ida]
+out        = "ida"
+project    = "target"
+signatures = ["vc32rtf", "vc32mfc", "vc32mfce", "vc7atl", "vc8atl", "vcseh", "vcextra",
+              "vc32_14", "vc32ucrt", "mssdk32", "msmfc2", "msmfc2u", "msddk32", "ms32wdk", "pe", "exe"]
+
+[analyzer]
+command  = ""
+provider = "ghidra"
+timeout  = 900
+
+[lift]
+skip_categories = ["other"]
+skip = []
+wrap = []
+chunk = 120
+max_functions_per_file = 150
+
+[classify]
+# Optional address ranges: [[0x401000, 0x500000, "app"], [0x500000, 0x600000, "lib:crt"]]
+ranges = []
+
+[layout]
+# Class/prefix name fragments used to choose the source folder. First match wins.
+areas = [
+  ["gui",    "Gui|Window|Dialog|Menu|Button|Scroll|Tab|Text|Popup|Tooltip|Slider|Hud|Cursor|Screen|Panel|Controls"],
+  ["gfx",    "GL|OpenGL|DX9|Render|Pixel|Image|Bitmap|Png|Jpeg|Gif|Dds|Dxt|Font|Draw|Color|Texture|Palette|Particle|Sprite|Shader|Display|Graphics"],
+  ["net",    "Net|Client|Connector|Packet|HTTP|DNS|SSL|Crypto|AES|DES|RC4|MD5|Base64|Socket|Server|Download|Url|Web"],
+  ["script", "Script|Event|Trigger|Npc|Class"],
+  ["game",   "Game|Player|Level|Map|Item|Anim|Weapon|Body|Head"],
+  ["math",   "Point|Rect|Quat|Box|Matrix|Vec|Plane|Random|Math"],
+  ["audio",  "Sound|Audio|Music|Wave|Mixer"],
+  ["core",   "Str|String|Array|List|File|Path|Dir|Registry|Debug|Console|Profile|Process|Time|Memory|Heap|Thread|Lock|Object|Resource|Cache|Stream|Input|Key|Mouse|App|Shell"],
+]

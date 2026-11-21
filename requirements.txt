@@ -1,0 +1,3 @@
+capstone>=5.0
+# Optional: the differential tester runs original bytes in Unicorn.
+# unicorn>=2.0
