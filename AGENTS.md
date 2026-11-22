@@ -67,7 +67,7 @@ These override convenience. A lift that compiles but is less correct is a regres
 1. Fill `project.toml`. Verify every address against the PE headers and the IDA database.
 2. Export with `pipeline/ida_export.py`. Check `functions.tsv`, `imports.txt`, `segments.txt`.
 3. Run `pipeline/make_functions.py` and `pipeline/classify.py`.
-4. Run `pipeline/gen.py --regenerate`. Read `src/unsupported.txt`.
+4. Run `pipeline/gen.py --regenerate`. Read `src/unsupported.txt`; run `static_shock.py asm` for the x86 listing.
 5. Run `pipeline/make_api.py` and `pipeline/gen_api.py`.
 6. Write the identity records: `pipeline/manifest.py` and `pipeline/inventory.py`; run
    `static_shock.py verify` and `static_shock.py readiness`.

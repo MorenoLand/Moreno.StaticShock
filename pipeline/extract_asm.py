@@ -1,8 +1,8 @@
-﻿# extract_asm.py: write the pure x86 disassembly of every function of the original exe to asm/, one file per origin/*.c.
+﻿# extract_asm.py: write the pure x86 disassembly of every lifted function to asm/, one file per src/*.c.
 # usage: extract_asm.py [--exe PATH]      (GAME_EXE is used when --exe is absent)
-# Layout: origin/<area>/<File>.c  ->  asm/<area>/<File>.asm, the same functions in the same order.  The function extent is
-# the one the lifter used (Lifter.decode: recursive descent from the start address); bytes of the function that were not
-# reached as code (jump tables, padding) are written as db/dd lines.  Only writes under asm/.
+# Layout: src/<area>/<File>.c  ->  asm/<area>/<File>.asm, the same functions in the same order, plus asm/index.tsv.
+# The function extent is the one the lifter used (Lifter.decode: recursive descent from the start address); bytes of the
+# function that were not reached as code (jump tables, padding) are written as db/dd lines.  Only writes under asm/.
 import csv, os, re, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cfg
@@ -10,10 +10,13 @@ from pe_image import Image
 from lift import Lifter
 
 OUT = os.path.join(cfg.ROOT, "asm")
-ORIGIN = os.path.join(cfg.ROOT, "origin")
+ORIGIN = str(cfg.SRC)
 
 im = Image(cfg.game_exe())
-rows = list(csv.DictReader(open(os.path.join(cfg.DATA, "functions.tsv"), encoding="utf-8"), delimiter="\t"))
+FUNCTIONS = os.path.join(cfg.DATA, "functions.tsv")
+if not os.path.exists(FUNCTIONS):
+    sys.exit("missing %s; run: python static_shock.py functions" % FUNCTIONS)
+rows = list(csv.DictReader(open(FUNCTIONS, encoding="utf-8"), delimiter="\t"))
 info = {int(r["ea"], 16): (r["name"], int(r["size"])) for r in rows}
 live = [r for r in rows if not r["category"].startswith("themida") and r["category"] != "other"]
 starts = sorted(int(r["ea"], 16) for r in live)
@@ -139,6 +142,7 @@ for root, _, fs in os.walk(ORIGIN):
 t0 = time.time()
 nfun = 0
 total = 0
+index = []
 for p, eas in sorted(files.items()):
     rel = os.path.relpath(p, ORIGIN)[:-2] + ".asm"
     dst = os.path.join(OUT, rel)
@@ -148,4 +152,12 @@ for p, eas in sorted(files.items()):
     total += len(text)
     with open(dst, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
-print("%d files, %d functions/blocks, %d bytes, %.1fs" % (len(files), nfun, total, time.time() - t0))
+    for e in eas:
+        name, size = info.get(e, ("block", 0))
+        index.append((e, name, size or 0, rel.replace("\\", "/")))
+with open(os.path.join(OUT, "index.tsv"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write("ea\tname\tsize\tfile\n")
+    for e, name, size, rel in sorted(index):
+        fh.write("%08x\t%s\t%d\t%s\n" % (e, name, size, rel))
+print("%d files, %d functions/blocks, %d bytes, %d index rows, %.1fs"
+      % (len(files), nfun, total, len(index), time.time() - t0))

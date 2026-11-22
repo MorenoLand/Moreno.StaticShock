@@ -37,7 +37,7 @@ python static_shock.py run -- <args>
 | `pipeline/inventory.py` | function/import tables | `recomp/data/inventory.json` |
 | `pipeline/pe_image.py` | any PE32 | section/address reader |
 | `pipeline/lift.py` | PE + function starts | C for one function |
-| `pipeline/extract_asm.py` | `src/` layout | `asm/` disassembly (optional) |
+| `pipeline/extract_asm.py` | `src/` layout + `functions.tsv` | `asm/` listing and `asm/index.tsv` (optional) |
 | `pipeline/rtti_names.py` | PE data | RTTI/vtable name proposals |
 | `pipeline/addr2fn.py` | `bin/lift.map` | function for a crash address |
 | `pipeline/difftest.py` | original bytes + driver | differential results |

@@ -18,3 +18,5 @@ __pycache__/
 *.exe
 *.map
 *.log
+asm/*
+!asm/README.md

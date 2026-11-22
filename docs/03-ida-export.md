@@ -43,6 +43,12 @@ files are missing, the export continues and logs a skip.
   warning, not a lift failure.
 - The pseudocode chunks include the functions you care about; `hexrays available: True`.
 
+## Assembly listings
+
+`python static_shock.py asm` disassembles every lifted function from the original bytes and writes
+`asm/` in the same layout as `src/`, plus `asm/index.tsv`. It needs `recomp/data/functions.tsv` and
+the original PE.
+
 ## Do not commit
 
 The `.i64` database and any pseudocode that embeds original strings or assets are analysis output.
