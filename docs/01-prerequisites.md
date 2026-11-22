@@ -2,7 +2,8 @@
 
 ## Host
 
-- Windows 10/11 x64. Linux and wasm are ports, not shipped host backends.
+- Windows 10/11 x64 for the native host. The wasm32 host layer is in the repository; Linux is not a
+  shipped backend.
 - 32-bit MinGW-w64 on Windows: `i686-w64-mingw32-gcc` must be on `PATH`.
   The default `project.toml` points at `D:/msys64/mingw32`; change it.
 - Python 3.11 or newer.

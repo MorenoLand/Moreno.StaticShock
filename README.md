@@ -14,6 +14,7 @@
   <a href="https://en.wikipedia.org/wiki/C11_(C_standard_revision)"><img alt="C11" src="https://img.shields.io/badge/C-11-00599C?style=flat-square&logo=c&logoColor=white"></a>
   <a href="https://www.microsoft.com/windows"><img alt="Host Windows x86-32" src="https://img.shields.io/badge/host-Windows%20x86--32-0078D6?style=flat-square&logo=windows&logoColor=white"></a>
   <img alt="x64 WIP" src="https://img.shields.io/badge/x64-WIP-f0883e?style=flat-square">
+  <img alt="wasm32 WIP" src="https://img.shields.io/badge/wasm32-WIP-f0883e?style=flat-square">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square"></a>
   <img alt="template" src="https://img.shields.io/badge/kind-template-8957e5?style=flat-square">
 </p>
@@ -37,6 +38,7 @@ original machine code are used at run time.
 | **Runtime** | Guest registers and memory, image mapping, import dispatch, threads, TLS, boot, crash reports, FPU helpers. |
 | **Import bridge** | stdcall, cdecl and thiscall, callbacks, guest pointers, file paths, x87 `ST(0)` returns and window presentation. |
 | **Build** | 32-bit MinGW host with explicit `.guest`/`.tail`/`.text` layout, pre-CRT reservation, stack/heap reserves and a linker map. |
+| **WebAssembly** | wasm32 host layer: guest image in linear memory, sentinel dispatch, x87 specials, browser input and a chunked preload shell. Imports are per-target and fail loudly when missing. |
 | **Analysis** | IDA export plus an external-analyzer backend. PE imports are parsed directly when no export is present. |
 | **RTTI** | MSVC type descriptors, complete object locators, vtables, base classes and positional vfunc slots. |
 | **Evidence** | Target manifest, machine-readable inventory, claim schema, unknowns registry and a fail-closed readiness report. |
@@ -113,6 +115,15 @@ flowchart TB
 6. Run `bin/<host_exe>` from the folder that holds the data. The host defaults to its own folder
    and then to `<exe folder>/data`.
 
+7. Build the wasm target (needs Emscripten; `[wasm].emcc` or `SS_EMCC`):
+
+   ```sh
+   python build_wasm.py --preload-data
+   python web/serve.py bin/wasm 8080
+   ```
+
+   The shell is WIP until the target implements its imports in `runtime/wasm/imports.c`.
+
 ## Analysis backends
 
 | Backend | When to use it | Notes |
@@ -147,6 +158,8 @@ listed, never stubbed.
 | `project.toml` | Every target-specific value: executable, image base, entry, ranges, linker layout, imports, analyzer. |
 | `pipeline/` | Analysis export, function table, RTTI, lifter, API table, manifest, inventory, readiness, progress. |
 | `runtime/` | Registers, FPU, guest memory, import dispatch, crash reports, threads, boot. |
+| `runtime/wasm/` | WebAssembly host: linear-memory services, sentinel dispatch, special imports, input queue and the per-target import hook. |
+| `web/` | Browser shell: canvas, input mapping, chunked data preload and a development server. |
 | `docs/` | The full workflow and the failure modes. Start with `docs/00-overview.md` and `docs/11-porting-checklist.md`. |
 | `schemas/` | Evidence record schema. |
 | `src/`, `ida/`, `recomp/data/`, `analysis/`, `bin/`, `build/`, `reports/` | Working folders; each has a README explaining what belongs there. |
@@ -162,7 +175,9 @@ listed, never stubbed.
 - The lifter is conservative: an instruction it does not model stops the program with an address.
 - SEH is not dispatched; a fault is a host crash with a guest register dump.
 - `lock`-prefixed instructions are serialized by a global guest lock, not truly atomic.
-- Native Windows is the supported host. Linux and wasm are ports, described in `docs/12-wasm.md`.
+- Native Windows x86-32 is the supported host. The wasm32 host layer is implemented and tested
+  headlessly, but ships no Win32 import emulation: each port implements `wasm_lookup()` and missing
+  imports abort with `module!name`. See `docs/12-wasm.md`.
 
 ## Community
 

@@ -1,128 +1,102 @@
 # WebAssembly port
 
-wasm32 is a good fit for the 32-bit lift: a guest address is a 32-bit offset into linear memory,
-which is the same shape as the native "guest address is a host pointer" model. The port is still
-real work, because every operating-system edge changes.
+**Status: host layer implemented and tested; imports are per target.** The same lifted C and the
+same `image.bin` build for wasm32. `runtime/wasm/` replaces the Win32 host; the lifter and the
+guest model do not change.
 
-## What stays the same
+No Win32 emulation is shipped. A port implements `wasm_lookup()` in `runtime/wasm/imports.c`;
+imports without an implementation abort with their `module!name`.
 
-- The lifted C, the register model and the x87 emulation.
-- The import sentinel table and `call_ind`.
-- The data image (`src/image.bin`) and the function table.
-- The rule that unimplemented calls fail loudly.
+## What the repository provides
 
-## Memory layout
+| File | Purpose |
+|---|---|
+| `runtime/wasm/sys.c` | Fixed-range checks, heap allocation, `rt_readable`, image blob loader. |
+| `runtime/wasm/api.c` | Sentinel dispatch, stdcall/cdecl stack cleanup, TEB/TLS, guest callbacks. |
+| `runtime/wasm/special.c` | `_initterm`, qsort/bsearch, GetProcAddress/GetModuleHandle/GetModuleFileName, x87 math returns. |
+| `runtime/wasm/boot.c` | Binds every import, allocates the guest stack and runs the OEP. |
+| `runtime/wasm/imports.c` | Weak `wasm_lookup()`; the per-target Win32 implementation point. |
+| `runtime/wasm/input.c` | Browser event queue filled by `web.js`. |
+| `build_wasm.py` | Emscripten build: incremental objects, `GLOBAL_BASE`, Asyncify, data preload. |
+| `web/` | Canvas shell, input mapping, chunked data loader and development server. |
+| `tests/run_wasm_test.py` | Builds and runs the host smoke test under Node. |
 
-Emscripten places its own static data, stack and heap in linear memory. The guest image must be
-reserved at a fixed offset:
+## Memory
 
-- Set a fixed `INITIAL_MEMORY` and, if possible, a `GLOBAL_BASE` above the guest range, or
-- reserve the guest range first (`emscripten_resize_heap` / a custom allocator) and keep the
-  host's static data above it.
+The guest image keeps its original base. Everything below `GLOBAL_BASE` is reserved linear memory:
 
-Guest address `A` becomes `HEAPU8[A]` only if the image base is mapped at that exact offset. Pick
-an image base that does not collide with Emscripten's static data (for example `0x10000000` if the
-original's base is free, or shift the whole guest image and translate addresses). Keep the
-translation in one place (`guest_ptr`).
+- `GLOBAL_BASE` defaults to `image_base + guest_size + tail_size`, rounded up to 64 KB.
+  Override it with `[wasm].global_base`.
+- Host static data, the C stack and `malloc` start at `GLOBAL_BASE`, so they cannot overlap the
+  guest image or the guest heap.
+- The guest stack is a host allocation (`[wasm].guest_stack`, 8 MiB by default).
+- `[wasm].initial_memory` defaults to 256 MiB and growth is enabled.
+- `src/image.bin` is preloaded as `/image.bin` and copied to its recorded virtual addresses.
 
-The `.guest`/`.tail` linker sections do not exist in wasm. Reserve the range in the module's
-memory and treat it as the guest heap.
+`doctor` checks that the image ends below `GLOBAL_BASE` and that `INITIAL_MEMORY` leaves room above
+it.
+
+## Dispatch
+
+A lifted import call goes through `api_dispatch(sentinel)`. The wasm version reads the arguments
+from the guest stack, calls the C emulation directly, writes `eax`/`edx`, then removes the return
+address and, for stdcall, the arguments. cdecl leaves its arguments to the caller. No host
+trampolines and no machine code are involved.
 
 ## Build
 
 ```sh
-emcc -O2 -sINITIAL_MEMORY=268435456 -sALLOW_MEMORY_GROWTH=1 \
-     -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 \
-     --preload-file data@/data \
-     -o bin/host.html \
-     src/*.c runtime/*.c \
-     --js-library runtime/wasm/w32.js
+python build_wasm.py --preload-data
+python web/serve.py bin/wasm 8080
 ```
 
-- `-sASSERTIONS=2` and `-gsource-map` for debugging; drop them for release.
-- `-sEXPORTED_FUNCTIONS=_main,_guest_call` for the glue.
-- `-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8`.
-- `-pthread` only with `SharedArrayBuffer` and COOP/COEP headers.
+Configuration in `project.toml`:
 
-## Imports
+```toml
+[wasm]
+emcc           = ""          # empty: SS_EMCC, build/emsdk/upstream/emscripten, then PATH
+global_base    = 0           # 0: computed from the image layout
+initial_memory = 0x10000000
+stack_size     = 0x1000000
+guest_stack    = 0x800000
+width          = 640
+height         = 480
+data_dir       = ""
+data_parts     = 4
+```
 
-Replace the Windows import bridge with a JavaScript/WASI layer. `runtime/wasm/w32.js` provides the
-same names the API table expects:
+The build writes `bin/wasm/host.js`, `host.wasm` and, when a data directory is preloaded,
+`host.data.partN`. `web/index.html` is rendered with the title, canvas size and part count.
 
-- `user32`: window creation is a canvas; `RegisterClass`/`CreateWindow` return handles; the guest
-  WndProc is called from DOM event listeners with the message and `lParam`.
-- `gdi32`: `SetDIBitsToDevice` copies the guest DIB to a canvas `ImageData`; `StretchDIBits`,
-  `BitBlt` and `CreateCompatibleDC` are no-ops or canvas operations.
-- `kernel32`: files through Emscripten FS, time, threads, critical sections, `GetModuleFileName`.
-- `winmm`/OpenAL: Web Audio. Queue guest PCM buffers into `AudioBufferSourceNode`; decode only if
-  the guest asks for a compressed format.
-- `shell32`/`ole32`: return the minimal values the program checks.
+## Per-port imports
 
-The import table is generated exactly as for native; only `api_call_real`/`host_call` changes.
+`wasm_lookup(module, name)` returns an `ApiEmu` or `NULL`. Implement the functions the target
+actually calls; do not return fake successes for the rest, because a missing import aborts with its
+name. Typical groups:
 
-## Window and message loop
+- `kernel32`: files through the Emscripten FS, time, critical sections, module and command line.
+- `user32`: one canvas window, a `WNDPROC`, and a message queue drained by `PeekMessageA`.
+- `gdi32`: `SetDIBitsToDevice` / `StretchDIBits` into an `ImageData` and `putImageData`.
+- `winmm`/OpenAL: Web Audio, created on a user gesture.
+- CRT: `_initterm`, qsort/bsearch, printf-family shims; the runtime covers the specials it knows.
 
-The guest expects a blocking message loop (`GetMessage`/`DispatchMessage`). In a browser:
+Blocking loops (`GetMessage`) need Asyncify, which the build enables. Do not busy-wait.
 
-- Run the loop from `emscripten_set_main_loop` with a simulated `MSG` queue, or
-- Use Asyncify to suspend the guest when it waits and resume on an event.
+## Validation
 
-Do not busy-wait. DOM events should enqueue messages; `PeekMessage` drains them.
+```sh
+python tests/run_wasm_test.py
+```
 
-## Input
-
-Map `mousemove`, `mousedown`, `mouseup`, `wheel`, `keydown`, `keyup` to the Windows messages the
-guest already handles. Convert canvas coordinates to guest canvas coordinates with the same
-client-to-canvas function the native host uses, including the origin subtraction. Test hover and
-click separately; they are different paths in most engines.
-
-## Presentation
-
-The guest's `SetDIBitsToDevice` hook already caches the full canvas. In wasm:
-
-1. Copy the cached DIB into an `ImageData`.
-2. Draw it to an offscreen canvas at the guest canvas size.
-3. Draw the offscreen canvas to the visible canvas with `drawImage`, scaled to the page.
-
-Use `requestAnimationFrame`; never present from inside the guest's tight loop more than once per
-frame.
-
-## Files
-
-`--preload-file data@/data` puts the legally obtained data in MEMFS. The guest's file paths are
-Windows-style; translate separators and map the game folder to `/data` in the `CreateFile`/`fopen`
-bridge. Writes go to MEMFS unless you add IndexedDB persistence.
-
-## Audio
-
-Web Audio needs a user gesture to start. Create the `AudioContext` on the first click and resume it.
-Guest PCM is signed 16-bit; create an `AudioBuffer` with the guest's channel count and sample rate.
-If the guest streams, keep a ring of `AudioBufferSourceNode`s and drop the oldest when the queue is
-full.
-
-## Threads and blocking
-
-The browser main thread cannot block. Options:
-
-- Single-threaded: Asyncify around blocking imports.
-- Worker: run the guest in a worker, communicate with the main thread for input/canvas; requires
-  `SharedArrayBuffer` and cross-origin isolation.
-- Emulate the guest's threads cooperatively; a `CreateThread` that only waits can be a task.
-
-Keep the runtime's global guest lock; it already serializes guest threads.
-
-## Debugging
-
-- `-sASSERTIONS=2`, `-gsource-map`, and the browser console for host errors.
-- Print guest `eip`, registers and the last function on a fault; map addresses with
-  `bin/lift.map` (keep the map next to the wasm build).
-- Use `emscripten_get_callstack` for host stacks.
-- For a headless check, run the page in Playwright, take a screenshot, and compare with the native
-  reference.
+The test builds `runtime/rt.c`, the wasm host and `tests/wasm/host_test.c` with emcc, preloads a
+one-piece image, runs under Node and checks stdcall/cdecl cleanup, specials, TEB fields,
+`rt_readable` bounds and image placement. It is a host test, not a game boot.
 
 ## Limits
 
-- No DirectX, no native DLLs, no raw sockets. Every such import needs a web implementation or a
-  documented failure.
-- Audio and input require user interaction; a headless test must simulate it.
-- 64-bit targets are a separate backend; wasm64 is not the same as x86-64.
+- No Win32 import emulation is included; every port supplies its own.
+- No threads, DirectX, native DLLs or raw sockets.
+- Audio needs a user gesture; headless tests must simulate it.
+- x86-64 is a separate backend; wasm64 is not x86-64.
+- The wasm package contains the original program's data. Build it only from a copy you legally own
+  and do not publish the package.

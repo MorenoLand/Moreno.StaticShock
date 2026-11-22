@@ -14,7 +14,7 @@
 | [09-build.md](09-build.md) | Image base, section layout, linker flags, stack and heap, reproducible builds. |
 | [10-debugging.md](10-debugging.md) | Crash maps, traces, profiling, differential testing. |
 | [11-porting-checklist.md](11-porting-checklist.md) | A step-by-step checklist for a new target. |
-| [12-wasm.md](12-wasm.md) | The Emscripten variant and its limits. |
+| [12-wasm.md](12-wasm.md) | wasm32 host layer, Emscripten build, per-target imports and limits. |
 | [13-lessons.md](13-lessons.md) | Failure modes seen in real lifts and how to avoid them. |
 | [14-x64.md](14-x64.md) | The x86-64 backend design; the shipped backend is x86-32. |
 | [15-naming.md](15-naming.md) | Evidence-based naming and readable rewrites without inventing behaviour. |
