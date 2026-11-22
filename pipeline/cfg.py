@@ -37,6 +37,7 @@ BUILD_CFG = section("build")
 IMPORT_CFG = section("imports")
 IDA_CFG = section("ida")
 LIFT_CFG = section("lift")
+WASM_CFG = section("wasm")
 
 NAME = PROJECT.get("name", "target")
 ARCH = PROJECT.get("arch", "x86")
@@ -126,6 +127,46 @@ def cflags():
 def host_libs():
     return BUILD_CFG.get("libs", ["psapi", "winmm", "ole32", "gdi32", "user32",
                                   "shell32", "advapi32", "comdlg32", "winspool"])
+
+
+def wasm_emcc():
+    return WASM_CFG.get("emcc", "")
+
+
+def wasm_data_dir():
+    return WASM_CFG.get("data_dir", "")
+
+
+def wasm_data_parts():
+    return max(1, int(WASM_CFG.get("data_parts", 4)))
+
+
+def wasm_width():
+    return int(WASM_CFG.get("width", 640))
+
+
+def wasm_height():
+    return int(WASM_CFG.get("height", 480))
+
+
+def wasm_guest_stack():
+    return _int(WASM_CFG.get("guest_stack"), 0x800000)
+
+
+def wasm_initial_memory():
+    return _int(WASM_CFG.get("initial_memory"), 0x10000000)
+
+
+def wasm_stack_size():
+    return _int(WASM_CFG.get("stack_size"), 0x1000000)
+
+
+def wasm_global_base():
+    value = _int(WASM_CFG.get("global_base"), 0)
+    if value:
+        return value
+    end = IMAGE_BASE + GUEST_SIZE + TAIL_SIZE
+    return (end + 0xFFFF) & ~0xFFFF
 
 
 def import_libs():

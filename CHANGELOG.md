@@ -3,6 +3,13 @@
 All notable changes to this template are recorded here. The format follows Keep a Changelog and
 the project uses semantic versioning for the pipeline.
 
+## [Unreleased]
+
+### Added
+
+- wasm32 host layer: linear-memory services, sentinel dispatch, x87 special imports, browser input
+  queue, chunked preload shell, Emscripten build and a Node host test.
+
 ## [0.1.0] - 2026-11-21
 
 ### Added

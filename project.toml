@@ -60,6 +60,19 @@ alcDestroyContext = 1
 alcGetCurrentContext = 0
 alcGetContextsDevice = 1
 
+[wasm]
+# emcc to use; empty checks SS_EMCC, build/emsdk/upstream/emscripten, then PATH.
+emcc           = ""
+# 0 = image_base + guest_size + tail_size, rounded up to 64 KB.
+global_base    = 0
+initial_memory = 0x10000000
+stack_size     = 0x1000000
+guest_stack    = 0x800000
+width          = 640
+height         = 480
+data_dir       = ""
+data_parts     = 4
+
 [ida]
 out        = "ida"
 project    = "target"

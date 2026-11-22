@@ -108,6 +108,22 @@ def doctor():
         except Exception as error:
             fail("PE parse: %s" % error)
 
+    if cfg.ARCH == "x86":
+        base = cfg.wasm_global_base()
+        if cfg.IMAGE_END <= base:
+            ok("wasm: image end 0x%x fits below GLOBAL_BASE 0x%x" % (cfg.IMAGE_END, base))
+        else:
+            fail("wasm: image end 0x%x is above GLOBAL_BASE 0x%x" % (cfg.IMAGE_END, base))
+        if cfg.wasm_initial_memory() >= base + 0x4000000:
+            ok("wasm: INITIAL_MEMORY 0x%x leaves room above GLOBAL_BASE" % cfg.wasm_initial_memory())
+        else:
+            fail("wasm: INITIAL_MEMORY 0x%x is too small for GLOBAL_BASE 0x%x" % (cfg.wasm_initial_memory(), base))
+        emcc = cfg.wasm_emcc() or str(ROOT / "build" / "emsdk" / "upstream" / "emscripten" / "emcc.exe")
+        if Path(emcc).exists() or shutil.which(emcc):
+            ok("wasm: emcc")
+        else:
+            warn("wasm: emcc not found; set [wasm].emcc or SS_EMCC")
+
     if importlib.util.find_spec("capstone"):
         ok("capstone is installed")
     else:

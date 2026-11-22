@@ -10,4 +10,5 @@ u32 rt_sys_alloc(u32 size);                    /* read/write memory anywhere bel
 void rt_sys_free(u32 addr, u32 size);
 void rt_sys_noaccess(u32 addr, u32 size);      /* any access to these pages faults */
 int rt_readable(u32 addr, u32 n);              /* 1 when n bytes at addr can be read without a fault */
+int rt_load_image(const char *path);           /* path NULL: load the compiled data image; else read the PE file */
 #endif
