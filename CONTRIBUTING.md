@@ -64,6 +64,7 @@ python static_shock.py readiness
 - `python static_shock.py readiness` should not regress.
 - Add a differential case for a lifter or runtime change.
 - Add a replay or a screenshot comparison for host behaviour.
+- `python tests/run_wasm_test.py` when the wasm host or `runtime/rt.c` changes.
 - Never commit the original binary the test needs; gate it on `SS_EXE` and skip when absent.
 
 ## Commits and pull requests

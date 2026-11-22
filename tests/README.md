@@ -11,3 +11,6 @@ committed:
 Do not commit the original executable, its assets or recorded proprietary content. A test that
 needs the original may generate its inputs from a path supplied by `SS_EXE` and skip when it is
 absent.
+
+`python tests/run_wasm_test.py` builds the wasm host and `tests/wasm/host_test.c` with Emscripten and
+runs it under Node. It needs emcc (`[wasm].emcc`, `SS_EMCC` or `build/emsdk`) and Node.

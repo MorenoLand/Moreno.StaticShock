@@ -36,7 +36,7 @@ copied; the runtime can make them unreadable so a stale read is a crash instead 
 | Generator (`pipeline/gen.py`) | Groups functions into files, writes `protos.h`, `dispatch.c`, stubs and the data image. |
 | Runtime (`runtime/`) | Registers, FPU, memory mapping, import dispatch, threads, crash reporting, boot. |
 | Import bridge (`runtime/api*.c`) | Calls the real DLL function. Special entries translate guest pointers, callbacks, file paths and FP returns. |
-| Host/platform | The Win32 APIs themselves, or their emulation on Linux/wasm. The lifted program creates its own window and message loop through `user32`. |
+| Host/platform | The Win32 APIs themselves, or the emulation layer supplied by a port. The wasm host ships the import hook, not a Win32 emulation. The lifted program creates its own window and message loop through `user32`. |
 
 ## What is not emulated
 

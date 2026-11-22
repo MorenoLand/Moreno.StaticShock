@@ -52,6 +52,12 @@ i686-w64-mingw32-gcc -dumpmachine
 It must print an `i686` target. A 64-bit compiler will produce host pointers that do not fit the
 guest's 32-bit registers.
 
+## WebAssembly
+
+`build_wasm.py` compiles the same `src/` and `image.bin` with Emscripten. The guest range is reserved
+below `GLOBAL_BASE`; the native linker layout above does not apply. See `docs/12-wasm.md` for the
+memory layout, build flags and the per-target import hook.
+
 ## Reproducibility
 
 - Keep `project.toml` under version control; it is the build description.
