@@ -29,7 +29,8 @@ original machine code are used at run time.
 
 > **This is the template repository, not a target workspace.** Copy it to a new folder and run the
 > pipeline there. Agents must work from the copy. Do not put an original executable, lifted source,
-> IDA exports, game data or builds in this tree.
+> IDA exports, game data or builds in this tree. In the copy, delete this README and write the
+> target's own: what the program is, how to build and run it, and what is still unknown.
 
 > **x64 backend: WIP.** PE32+ parsing, architecture-aware config, manifest and `doctor` checks are
 > in. The x64 lifter, runtime ABI and build layout are next. The shipped backend remains x86-32.
