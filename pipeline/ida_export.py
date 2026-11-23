@@ -105,6 +105,7 @@ except Exception as error:
     say("hexrays import failed: %s" % error)
 
 say("hexrays available: %s" % available)
+decompile_start = time.time()
 if available:
     chunk_size = 200
     count = failed = chunk = 0
@@ -133,7 +134,7 @@ if available:
                                                           func.end_ea - func.start_ea, chunk, status))
         count += 1
         if count % 100 == 0:
-            say("decompiled %d (failed %d) %.0fs" % (count, failed, time.time() - start))
+            say("decompiled %d (failed %d) %.0fs" % (count, failed, time.time() - decompile_start))
     if handle:
         handle.close()
     index.close()

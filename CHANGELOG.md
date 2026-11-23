@@ -10,7 +10,8 @@ the project uses semantic versioning for the pipeline.
 - wasm32 host layer: linear-memory services, sentinel dispatch, x87 special imports, browser input
   queue, chunked preload shell, Emscripten build and a Node host test.
 - Delphi/VCL support: SEH continuations and `pop reg; jmp reg` returns in the lifter, optional IDA
-  code map, MakeObjectInstance thunks, Delphi exception reporting and `docs/22-delphi.md`.
+  code map, shared flag state, `fbstp` BCD, TLS block setup, window-procedure identity translation,
+  MakeObjectInstance thunks, Delphi exception reporting and `docs/22-delphi.md`.
 
 ## [0.1.0] - 2026-11-21
 

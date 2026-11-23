@@ -78,8 +78,15 @@ That is a return, not an indirect call. The lifter recognises a register that wa
 emits `FN_RET`/`return` instead of `call_ind`.
 
 Flags must stay live across calls and returns: Delphi code branches on flags left by a callee, which
-a C function cannot carry implicitly. The generated function keeps the flag variables live and
-materialises them at every return.
+a C function cannot carry implicitly. The flag variables are shared guest state in `rt.c` and are
+materialised at every return. `fbstp` writes packed BCD through `fx_bcd_store`.
+
+## Window procedure identity
+
+VCL stores and retrieves the window procedure through `SetWindowLongA`/`GetWindowLongA` with index
+`-4`, and `GetClassInfoA`/`CallWindowProcA` also carry it. The host trampoline is a different
+pointer from the guest address. Translate both directions through `rt_tramp`/`rt_tramp_guest`, or
+the next `WndProc` comparison fails and the form stops receiving messages.
 
 ## DFM resources
 
