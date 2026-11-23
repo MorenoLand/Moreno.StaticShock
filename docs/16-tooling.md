@@ -38,6 +38,7 @@ python static_shock.py run -- <args>
 | `pipeline/pe_image.py` | any PE32 | section/address reader |
 | `pipeline/lift.py` | PE + function starts | C for one function |
 | `pipeline/extract_asm.py` | `src/` layout + `functions.tsv` | `asm/` listing and `asm/index.tsv` (optional) |
+| `pipeline/extract_res.py` | PE resource directory | `recomp/data/<exe>.res` for the linker |
 | `pipeline/rtti_names.py` | PE data | RTTI/vtable name proposals |
 | `pipeline/addr2fn.py` | `bin/lift.map` | function for a crash address |
 | `pipeline/difftest.py` | original bytes + driver | differential results |

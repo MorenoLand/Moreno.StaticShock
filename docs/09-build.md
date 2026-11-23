@@ -58,6 +58,14 @@ guest's 32-bit registers.
 below `GLOBAL_BASE`; the native linker layout above does not apply. See `docs/12-wasm.md` for the
 memory layout, build flags and the per-target import hook.
 
+## Image and resources
+
+`build.py` writes `build/image_blob.c`, which embeds `src/image.bin` in `.rodata` as
+`rt_image_blob`, so the host can map the data image at its original addresses. If
+`recomp/data/*.res` exists (or `[build].resources` names one), it is linked with `windres -J res`,
+so `FindResource`/`LoadResource` see the original forms, icons and string tables.
+`pipeline/extract_res.py` writes that `.res` from the PE resource directory.
+
 ## Reproducibility
 
 - Keep `project.toml` under version control; it is the build description.

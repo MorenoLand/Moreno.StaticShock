@@ -25,5 +25,6 @@
 | [20-analysis-backends.md](20-analysis-backends.md) | IDA vs external analyzer backends, per-function dossiers and the work dashboard. |
 | [21-rtti.md](21-rtti.md) | MSVC RTTI classes, vtables, base classes and vfunc slots. |
 | [22-delphi.md](22-delphi.md) | Delphi/VCL detection, VMT and dynamic methods, SEH, DFM resources, thunks and verification. |
+| [23-wasm-imports.md](23-wasm-imports.md) | Per-port wasm import patterns: dynamic imports, MMIO, audio, child windows, diagnostics. |
 
 Start with the overview and the checklist. Everything else is reference material.

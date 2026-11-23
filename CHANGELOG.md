@@ -12,6 +12,13 @@ the project uses semantic versioning for the pipeline.
 - Delphi/VCL support: SEH continuations and `pop reg; jmp reg` returns in the lifter, optional IDA
   code map, shared flag state, `fbstp` BCD, TLS block setup, window-procedure identity translation,
   MakeObjectInstance thunks, Delphi exception reporting and `docs/22-delphi.md`.
+- Build embeds `src/image.bin` as `rt_image_blob` and links extracted `.res` resources; `windres`
+  fallback no longer treats an empty path as a compiler.
+- Dispatcher drops skipped functions; the code map accepts unaligned VMT thunks; `gen_api.py`
+  honours `[imports.nargs]`; continuation discovery accepts argument pushes and stays inside the
+  code map; file-dialog hooks and heap MakeObjectInstance thunks are trampolined.
+- `docs/23-wasm-imports.md` records the wasm import patterns: dynamic imports, memory MMIO, WAV and
+  Web Audio, child windows and diagnostics.
 
 ## [0.1.0] - 2026-11-21
 
