@@ -88,6 +88,7 @@ int rt_readable(u32 addr, u32 n)
 #endif
 
 u32 r_eax, r_ecx, r_edx, r_ebx, r_esp, r_ebp, r_esi, r_edi;
+u32 fZ, fS, fC, fO, fP, fA;
 long double fpr[8];
 XMM xmm[8];
 u32 mxcsr = 0x1F80;
@@ -160,6 +161,8 @@ RT_FALLBACK void api_dispatch(u32 sentinel)
     rt_unsup(sentinel, "import called but this build has no API bridge");
 }
 
+static int delphi_thunk(u32 target);
+
 void call_ind(u32 target)
 {
     if ((target & 0xFF000000u) == 0xFE000000u) {
@@ -174,6 +177,7 @@ void call_ind(u32 target)
     if (!e || e->addr != target) {
         e = bsearch(&target, fn_table, fn_count, sizeof(FnEnt), cmp_ent);
         if (!e) {
+            if (delphi_thunk(target)) return;
             rt_unsup(target, "indirect call to a target that is not a lifted function");
         }
         *slot = e;
@@ -181,10 +185,38 @@ void call_ind(u32 target)
     e->fn();
 }
 
+/* Delphi MakeObjectInstance thunk: E8 rel32 -> block: 59 (pop ecx) E9 rel32 (StdWndProc). The 8-byte TMethod
+ * record (method, instance) sits at thunk+5 and StdWndProc expects its address in ECX. */
+static int delphi_thunk(u32 target)
+{
+    if (!rt_readable(target, 13) || R8(target) != 0xE8) return 0;
+    u32 block = target + 5 + R32(target + 1);
+    if (!rt_readable(block, 6) || R8(block) != 0x59 || R8(block + 1) != 0xE9) return 0;
+    u32 proc = block + 6 + R32(block + 2);
+    if (!rt_readable(proc, 1)) return 0;
+    r_ecx = target + 5;
+    call_ind(proc);
+    return 1;
+}
+
 #if !defined(__EMSCRIPTEN__)
 /* map the sections of the original image at their own addresses and copy the raw bytes */
 extern const unsigned char rt_image_blob[] __attribute__((weak));     /* the original exe, embedded by scripts/build.sh */
 extern const unsigned int rt_image_size __attribute__((weak));
+extern u32 rt_tls_start, rt_tls_end, rt_tls_zero, rt_tls_index_addr;
+/* TLS directory of the image: the guest's TLS block must be copied and its index slot cleared before the CRT runs. */
+static void rt_parse_tls(void)
+{
+    u32 lfanew = R32(SS_IMAGE_BASE + 0x3C);
+    u32 opt = SS_IMAGE_BASE + lfanew + 24;
+    u32 rva = R32(opt + 96 + 9 * 8);                  /* PE32 data directory 9: TLS */
+    if (!rva) return;
+    u32 t = SS_IMAGE_BASE + rva;
+    rt_tls_start = R32(t);
+    rt_tls_end = R32(t + 4);
+    rt_tls_index_addr = R32(t + 8);
+    rt_tls_zero = R32(t + 16);
+}
 int rt_load_image(const char *path)
 {
     unsigned char *d;
@@ -218,6 +250,7 @@ int rt_load_image(const char *path)
             if (!used) rt_sys_noaccess(pg, 0x1000);
         }
         }
+        rt_parse_tls();
         return 1;
     } else {
         /* take the guest range first: reading the exe into a heap block would otherwise put that block in it */
@@ -242,6 +275,7 @@ int rt_load_image(const char *path)
         memcpy((void *)(uintptr_t)(SS_IMAGE_BASE + va), d + rp, rs < sz ? rs : sz);
     }
     free(d);
+    rt_parse_tls();
     return 1;
 }
 #endif
@@ -254,6 +288,22 @@ double fx_rint_mx(double v)
     case 2: return ceil(v);
     default: return trunc(v);
     }
+}
+
+void fx_bcd_store(u32 addr, long double v)
+{
+    u8 out[10] = {0};
+    long double r = fx_rint(v);
+    if (r >= -999999999999999999.0L && r <= 999999999999999999.0L) {
+        i64 n = (i64)r;
+        u64 a = n < 0 ? (u64)(-(n + 1)) + 1 : (u64)n;
+        for (int k = 0; k < 9; ++k) { out[k] = (u8)((((a / 10) % 10) << 4) | (a % 10)); a /= 100; }
+        if (n < 0) out[9] = 0x80;
+    } else {
+        out[9] = 0x80;
+        fsw |= 0x01;
+    }
+    memcpy((void *)(uintptr_t)addr, out, 10);
 }
 
 u32 rt_eflags_extra;

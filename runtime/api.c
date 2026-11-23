@@ -71,7 +71,8 @@ static void gil_enter(void) { pthread_mutex_lock(&gil); }
 static void gil_leave(void) { pthread_mutex_unlock(&gil); }
 #endif
 
-/* a fake TEB: only the fields guest code reads (SEH chain, stack bounds, self pointer) */
+/* a fake TEB: only the fields guest code reads (SEH chain, stack bounds, self pointer, TLS array) */
+u32 rt_tls_start, rt_tls_end, rt_tls_zero, rt_tls_index_addr;
 u32 rt_new_teb(u32 stack_lo, u32 stack_top)
 {
     u32 t = rt_sys_alloc(0x1000);
@@ -79,6 +80,19 @@ u32 rt_new_teb(u32 stack_lo, u32 stack_top)
     W32(t + 4, stack_top);
     W32(t + 8, stack_lo);
     W32(t + 0x18, t);
+#if defined(_WIN32)
+    W32(t + 0x20, (u32)GetCurrentProcessId());
+    W32(t + 0x24, (u32)GetCurrentThreadId());
+    if (rt_tls_index_addr) {
+        u32 arr = rt_sys_alloc(0x1000);
+        u32 len = rt_tls_end > rt_tls_start ? rt_tls_end - rt_tls_start : 0;
+        u32 blk = rt_sys_alloc((len + rt_tls_zero + 0xFFF) & ~0xFFFu);
+        if (len) memcpy((void *)(uintptr_t)blk, (void *)(uintptr_t)rt_tls_start, len);
+        W32(rt_tls_index_addr, 0);
+        W32(arr, blk);
+        W32(t + 0x2C, arr);
+    }
+#endif
     return t;
 }
 
@@ -262,6 +276,15 @@ u32 rt_tramp(u32 guest, int nargs)
     p[k++] = 0xC2; *(u16 *)(p + k) = (u16)(nargs * 4); k += 2;                   /* ret nargs*4 */
     tramps[idx].stub = (u32)(uintptr_t)p;
     return tramps[idx].stub;
+}
+
+u32 rt_tramp_guest(u32 host)
+{
+    for (int i = 0; i < tramp_n; ++i)
+        if (tramps[i].stub == host) return tramps[i].guest;
+    for (unsigned i = 0; i < sizeof api_tab / sizeof *api_tab; ++i)
+        if ((u32)(uintptr_t)api_tab[i].fn == host) return API_BASE + (i << 4);
+    return host;
 }
 #endif
 

@@ -24,5 +24,6 @@
 | [19-readiness.md](19-readiness.md) | Fail-closed readiness report and the evidence-backed unknowns registry. |
 | [20-analysis-backends.md](20-analysis-backends.md) | IDA vs external analyzer backends, per-function dossiers and the work dashboard. |
 | [21-rtti.md](21-rtti.md) | MSVC RTTI classes, vtables, base classes and vfunc slots. |
+| [22-delphi.md](22-delphi.md) | Delphi/VCL detection, VMT and dynamic methods, SEH, DFM resources, thunks and verification. |
 
 Start with the overview and the checklist. Everything else is reference material.

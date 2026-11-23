@@ -20,6 +20,7 @@ typedef int8_t i8; typedef int16_t i16; typedef int32_t i32; typedef int64_t i64
 #endif
 
 extern u32 r_eax, r_ecx, r_edx, r_ebx, r_esp, r_ebp, r_esi, r_edi;
+extern u32 fZ, fS, fC, fO, fP, fA;              /* the guest's EFLAGS bits: shared by every lifted function like the registers */
 extern long double fpr[8];
 extern int ftop;
 extern u16 fsw, fcw;
@@ -59,6 +60,7 @@ i32 fx_int32(long double v);
 i64 fx_int64(long double v);
 void fx_compare(long double a, long double b);
 double fx_rint_mx(double v);
+void fx_bcd_store(u32 addr, long double v);
 u16 fx_sw(void);
 
 __attribute__((noreturn)) void rt_unsup(u32 addr, const char *msg);

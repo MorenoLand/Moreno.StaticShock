@@ -8,8 +8,9 @@
 
 enum {
     S_NONE, S_GETMODULEHANDLE, S_GETPROCADDRESS, S_LOADLIBRARY, S_REGISTERCLASS, S_REGISTERCLASSEX, S_SETTIMER,
-    S_CREATETHREAD, S_SETWINDOWLONG, S_SETUNHANDLED, S_WGLGETPROC, S_DIALOG, S_FLSALLOC, S_GETMODULEFILENAME, S_ENUMWINDOWS, S_ENUMCHILD, S_ENUMTHREAD,
-    S_CREATEFILE, S_WRITEFILE, S_CLOSEHANDLE, S_SWAPBUFFERS, S_INITTERM, S_INITTERM_E, S_GETMALLOC, S_QSORT, S_BEGINTHREAD, S_BEGINTHREADEX, S_ENDTHREAD, S_BSEARCH, S_CIPOW, S_SETDIBITS, S_MATHFP
+    S_CREATETHREAD, S_SETWINDOWLONG, S_GETWINDOWLONG, S_GETCLASSINFO, S_CALLWINDOWPROC, S_SETUNHANDLED, S_WGLGETPROC, S_DIALOG, S_FLSALLOC, S_GETMODULEFILENAME, S_ENUMWINDOWS, S_ENUMCHILD, S_ENUMTHREAD,
+    S_CREATEFILE, S_WRITEFILE, S_CLOSEHANDLE, S_SWAPBUFFERS, S_INITTERM, S_INITTERM_E, S_GETMALLOC, S_QSORT, S_BEGINTHREAD, S_BEGINTHREADEX, S_ENDTHREAD, S_BSEARCH, S_CIPOW, S_SETDIBITS, S_MATHFP,
+    S_ENUMFONTEX, S_ENUMFONT
 };
 
 static const struct { const char *name; int id; } specials[] = {
@@ -17,8 +18,12 @@ static const struct { const char *name; int id; } specials[] = {
     {"GetProcAddress", S_GETPROCADDRESS}, {"LoadLibraryA", S_LOADLIBRARY}, {"LoadLibraryW", S_LOADLIBRARY},
     {"RegisterClassA", S_REGISTERCLASS}, {"RegisterClassExA", S_REGISTERCLASSEX}, {"SetTimer", S_SETTIMER},
     {"CreateThread", S_CREATETHREAD}, {"SetWindowLongA", S_SETWINDOWLONG},
+    {"GetWindowLongA", S_GETWINDOWLONG}, {"GetClassInfoA", S_GETCLASSINFO}, {"CallWindowProcA", S_CALLWINDOWPROC},
     {"SetUnhandledExceptionFilter", S_SETUNHANDLED}, {"wglGetProcAddress", S_WGLGETPROC}, {"FlsAlloc", S_FLSALLOC}, {"GetModuleFileNameA", S_GETMODULEFILENAME},
     {"EnumWindows", S_ENUMWINDOWS}, {"EnumChildWindows", S_ENUMCHILD}, {"EnumThreadWindows", S_ENUMTHREAD},
+    {"EnumFontFamiliesExA", S_ENUMFONTEX}, {"EnumFontFamiliesExW", S_ENUMFONTEX},
+    {"EnumFontsA", S_ENUMFONT}, {"EnumFontsW", S_ENUMFONT}, {"EnumFontFamiliesA", S_ENUMFONT}, {"EnumFontFamiliesW", S_ENUMFONT},
+    {"EnumDisplayMonitors", S_ENUMFONT},
     {"CreateFileA", S_CREATEFILE}, {"WriteFile", S_WRITEFILE}, {"CloseHandle", S_CLOSEHANDLE}, {"SwapBuffers", S_SWAPBUFFERS}, {"wglSwapBuffers", S_SWAPBUFFERS},
     {"_initterm", S_INITTERM}, {"_initterm_e", S_INITTERM_E},
     {"SHGetMalloc", S_GETMALLOC}, {"qsort", S_QSORT}, {"bsearch", S_BSEARCH}, {"SetDIBitsToDevice", S_SETDIBITS},  {"_CIpow", S_CIPOW}, {"_CIlog", S_CIPOW}, {"_CIexp", S_CIPOW}, {"_CIsqrt", S_CIPOW}, {"_CIsin", S_CIPOW}, {"_CIcos", S_CIPOW}, {"_CItan", S_CIPOW}, {"_CIatan", S_CIPOW}, {"_beginthread", S_BEGINTHREAD}, {"_beginthreadex", S_BEGINTHREADEX}, {"_endthread", S_ENDTHREAD}, {"_endthreadex", S_ENDTHREAD},
@@ -208,6 +213,26 @@ u64 api_special(int id, ApiEnt *e, u32 *a)
     case S_SETWINDOWLONG: {
         u32 b[3] = { a[0], a[1], a[2] };
         if ((int)a[1] == -4) b[2] = wndproc(a[2]);
+        u64 r = api_call_real(e, b);
+        return (int)a[1] == -4 ? rt_tramp_guest((u32)r) : r;
+    }
+    case S_GETWINDOWLONG: {
+        u64 r = api_call_real(e, a);
+        return (int)a[1] == -4 ? rt_tramp_guest((u32)r) : r;
+    }
+    case S_GETCLASSINFO: {
+        u64 r = api_call_real(e, a);
+        if (r) {
+            WNDCLASSA wc;
+            memcpy(&wc, (void *)(uintptr_t)a[2], sizeof wc);
+            wc.lpfnWndProc = (WNDPROC)(uintptr_t)rt_tramp_guest((u32)(uintptr_t)wc.lpfnWndProc);
+            memcpy((void *)(uintptr_t)a[2], &wc, sizeof wc);
+        }
+        return r;
+    }
+    case S_CALLWINDOWPROC: {
+        u32 b[5] = { a[0], a[1], a[2], a[3], a[4] };
+        if (b[0] >= SS_IMAGE_BASE && b[0] < SS_IMAGE_END) b[0] = wndproc(b[0]);
         return api_call_real(e, b);
     }
     case S_CREATETHREAD: {
@@ -224,6 +249,14 @@ u64 api_special(int id, ApiEnt *e, u32 *a)
         if (len >= a[2]) len = a[2] ? a[2] - 1 : 0;
         if (a[2]) { memcpy(dst, rt_guest_exe, len); dst[len] = 0; }
         return len;
+    }
+    case S_ENUMFONTEX: {                  /* BOOL CALLBACK proc(const LOGFONT *, const TEXTMETRIC *, DWORD, LPARAM) */
+        u32 b[5] = { a[0], a[1], a[2] ? rt_tramp(a[2], 4) : 0, a[3], a[4] };
+        return api_call_real(e, b);
+    }
+    case S_ENUMFONT: {                    /* BOOL CALLBACK proc(const ENUMLOGFONT *, const NEWTEXTMETRIC *, int, LPARAM) */
+        u32 b[4] = { a[0], a[1], a[2] ? rt_tramp(a[2], 4) : 0, a[3] };
+        return api_call_real(e, b);
     }
     case S_ENUMWINDOWS: {                                /* BOOL CALLBACK proc(HWND, LPARAM): the host calls it, so it needs a trampoline */
         u32 b[2] = { rt_tramp(a[0], 2), a[1] };

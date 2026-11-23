@@ -51,12 +51,13 @@ def mask(bits):
 
 
 class Lifter:
-    def __init__(self, image, func_starts, func_names=None, iat=None, code_lo=None, code_hi=None):
+    def __init__(self, image, func_starts, func_names=None, iat=None, code_lo=None, code_hi=None, code_heads=None):
         self.im = image
         self.code_lo = code_lo if code_lo is not None else image.base + 0x1000
         self.code_hi = code_hi if code_hi is not None else image.base + image.image_size
         self.starts = func_starts            # sorted list of function entry addresses
         self.startset = set(func_starts)
+        self.code_heads = code_heads           # instruction starts IDA knows; a jump table entry that points at data is not code
         self.names = func_names or {}
         self.iat = iat or {}                  # slot address -> import name
         self.unsup = []                       # (addr, text) of instructions emitted as UNSUP
@@ -64,6 +65,9 @@ class Lifter:
         self.imm_cands = set()                # code addresses used as immediate operands (function pointers: callbacks, allocators)
         self.insn_bytes = set()               # every byte that belongs to a decoded instruction; the rest of the code range is data (jump tables, padding)
         self.record = True                    # False while lifting a guessed function start (see gen.py): its bytes may be a table, so they stay data
+        self.conts = set()                    # code addresses this function pushes and returns into (Delphi SEH epilogue continuations)
+        self.call_returns = {}                # callee -> return addresses of its direct call sites
+        self.tail_funcs = set()               # functions that end in 'jmp reg' (the register holds the caller's continuation)
         import bisect
         self._bisect = bisect
 
@@ -108,7 +112,10 @@ class Lifter:
     def write(self, op, v, bits=None):
         bits = bits or op.size * 8
         if op.type == X86_OP_REG:
-            full, rb, sh = regparts(self.rname(op.reg))
+            parts = regparts(self.rname(op.reg))
+            if parts is None:
+                raise Unsupported("segment register")
+            full, rb, sh = parts
             if rb == 32:
                 return "r_%s = %s;" % (full, v)
             if rb == 16:
@@ -121,9 +128,9 @@ class Lifter:
         raise Unsupported("write operand")
 
     # ---- decode (recursive descent) ----
-    def decode(self, ea):
+    def decode(self, ea, extra=()):
         ins = {}
-        work = [ea]
+        work = [ea] + list(extra)
         tables = {}
         owner_lo = ea
         nxt = self._bisect.bisect_right(self.starts, ea)
@@ -145,6 +152,12 @@ class Lifter:
                         if o.type == X86_OP_IMM and self.code_lo <= (o.imm & 0xFFFFFFFF) < self.code_hi:
                             self.imm_cands.add(o.imm & 0xFFFFFFFF)
                 i.raw = c
+                if c.mnemonic == "push" and c.operands and c.operands[0].type == X86_OP_IMM:
+                    t = c.operands[0].imm & 0xFFFFFFFF
+                    if ea <= t < owner_hi and t != ea and self.im.read(t, 1) == b"\xe9":
+                        n = (t + 5) & 0xFFFFFFFF      # Delphi SEH handler is 'jmp @@HandleFinally' (5 bytes); the finally body follows it
+                        if n < owner_hi and (self.code_heads is None or n in self.code_heads):
+                            self.calls.add(n)
                 i.succ = []
                 ins[a] = i
                 if self.record:
@@ -169,8 +182,10 @@ class Lifter:
                         tables[a] = (tab, tg)
                         i.succ = list(dict.fromkeys(tg))
                         work.extend(tg)
+                    elif o.type == X86_OP_REG:
+                        self.tail_funcs.add(ea)
                     break
-                if m.startswith("j") and m != "jmp":
+                if (m.startswith("j") and m != "jmp") or m in ("loop", "loope", "loopne"):
                     t = i.ops[0].imm
                     i.succ = [nextaddr, t]
                     work.append(t)
@@ -180,36 +195,102 @@ class Lifter:
                     o = i.ops[0]
                     if o.type == X86_OP_IMM:
                         self.calls.add(o.imm)
+                        self.call_returns.setdefault(o.imm, set()).add(nextaddr)
                 i.succ = [nextaddr]
                 a = nextaddr
         self.tables = tables
+        self.conts = self.find_conts(ins, ea, owner_hi)
         return ins
+
+    def find_conts(self, ins, ea, owner_hi):
+        """Addresses a function pushes and then returns into (the Delphi SEH epilogue pops the frame, pushes a
+        continuation and lets `ret` jump to it). The backward walk counts pushes and pops; a pushed code address
+        that is still on top at the return is a continuation."""
+        order = sorted(ins)
+        out = set()
+        for ret in order:
+            if ins[ret].mn not in ("ret", "retn", "repz ret", "rep ret"):
+                continue
+            idx = order.index(ret) - 1
+            need = 0
+            steps = 0
+            consume = False
+            while idx >= 0 and steps < 80:
+                a = order[idx]
+                i = ins[a]
+                idx -= 1
+                steps += 1
+                m = i.mn
+                if m in ("ret", "retn", "repz ret", "rep ret", "jmp"):
+                    break
+                if m == "call":
+                    consume = True          # the pushes before the call are its arguments, already popped
+                    continue
+                if consume and m == "push":
+                    o = i.ops[0] if i.ops else None
+                    t = (o.imm & 0xFFFFFFFF) if o is not None and o.type == X86_OP_IMM else None
+                    if need == 0 and t is not None and ea <= t < owner_hi and t != ret and self.im.read(t, 1) \
+                            and (self.code_heads is None or t in self.code_heads):
+                        out.add(t)              # `push continuation; call cleanup; ret`: the address is not a call argument
+                        break
+                    continue
+                consume = False
+                if m == "push":
+                    if need == 0:
+                        o = i.ops[0] if i.ops else None
+                        if o is not None and o.type == X86_OP_IMM:
+                            t = o.imm & 0xFFFFFFFF
+                            if ea <= t < self.code_hi and t != ret and self.im.read(t, 1) \
+                                    and (self.code_heads is None or t in self.code_heads):
+                                out.add(t)
+                        break
+                    need -= 1
+                    continue
+                if m == "pop":
+                    need += 1
+                    continue
+                if m in ("add", "sub") and len(i.ops) == 2 and i.ops[0].type == X86_OP_REG and \
+                        self.rname(i.ops[0].reg) == "esp" and i.ops[1].type == X86_OP_IMM:
+                    slots = (i.ops[1].imm & 0xFFFFFFFF) // 4
+                    need += slots if m == "add" else -slots
+                    continue
+                if m == "leave" or (m == "mov" and i.ops and i.ops[0].type == X86_OP_REG and
+                                    self.rname(i.ops[0].reg) == "esp"):
+                    break
+        return out
 
     def read_table(self, tab, ea, hi):
         """Entries of a jump table that start at `tab`.  The index can be negative (memcpy's tail table), so entries
         before `tab` that still point into this function are included; the emitted switch dispatches on the loaded
         address, so a superset is harmless."""
-        lo = ea - 0x400
+        lo = self.code_lo
+        hi = self.code_hi
         out = []
 
         def scan(direction, limit):
             bad = 0
             for k in range(0 if direction > 0 else 1, limit):
                 v = self.im.u32(tab + direction * 4 * k)
-                if v is not None and lo <= v < hi and self.im.read(v, 1):
+                if v is not None and lo <= v < hi and abs(v - tab) <= 0x4000 and self.im.read(v, 1):
                     out.append(v)
                     bad = 0
                 else:
                     bad += 1          # one junk entry is allowed: memcpy's table overlaps code bytes
                     if bad > 1:
                         break
-        scan(-1, 257)
         scan(1, 1024)
         return out
 
     # ---- semantics: returns (uses, defs, may_def_only, code builder) ----
     def lift(self, ea, suffix=""):
         ins = self.decode(ea)
+        extra = set()
+        for _ in range(8):
+            more = self.conts - set(ins) - extra
+            if not more:
+                break
+            extra |= more
+            ins = self.decode(ea, extra)
         self._ins = ins
         order = sorted(ins)
         # liveness
@@ -239,9 +320,9 @@ class Lifter:
                     targets.add(s)
         for tab, tg in self.tables.values():
             targets.update(tg)
+        targets.update(self.conts & set(ins))
         name = self.names.get(ea, "")
         out = ["void f_%08x%s(void)%s" % (ea, suffix, " /* %s */" % name if name else ""), "{",
-               "    int fZ = 0, fS = 0, fC = 0, fO = 0, fP = 0, fA = 0; (void)fZ; (void)fS; (void)fC; (void)fO; (void)fP; (void)fA;",
                "    FN_ENTER(0x%08x);" % ea]
         if order and order[0] != ea:
             # code that belongs to the function lies before its entry point: start by jumping to the entry
@@ -270,7 +351,9 @@ class Lifter:
         m = i.mn
         u, d = set(), set()
         base = m.split()[-1] if m.startswith("rep") else m
-        if m.startswith("j") and m != "jmp":
+        if m in ("loope", "loopne"):
+            u = {"Z"}
+        elif m.startswith("j") and m != "jmp":
             cc = m[1:]
             u = set(COND_FLAGS.get(cc, "ZSCOPA"))
         elif m.startswith("set") or (m.startswith("cmov")):
@@ -305,19 +388,20 @@ class Lifter:
         elif m in ("rcl", "rcr", "pushfd", "popfd", "pushf", "popf"):
             u = set(ALLF)
             d = set(ALLF) if "pop" in m or m.startswith("rc") else set()
-        elif base in ("cmpsb", "cmpsd", "scasb", "scasd", "scasw"):
-            d = set("ZSCOPA")
+        elif base in ("cmpsb", "cmpsw", "cmpsd", "scasb", "scasw", "scasd"):
+            u, d = set("ZSCOPA"), set("ZSCOPA")      # a zero-length scan changes no flags: the incoming ones stay live
         elif m in ("bt", "bts", "btr", "btc"):
             d = {"C"}
         elif m in ("div", "idiv"):
             d = set()
-        elif m in ("call", "ret", "retn", "repz ret", "rep ret"):      # a jmp passes the flags on to its target
+        elif m in ("call",):                                 # the callee overwrites them, like the hardware
             u, d = set(), set(ALLF)
+        elif m in ("ret", "retn", "repz ret", "rep ret"):     # the caller branches on what the callee leaves
+            u, d = set(ALLF), set()
         elif m.startswith("f") and m in ("fcom", "fcomp"):
             pass
         i.uses, i.defs = u, d
-        # kill-all at calls / returns so nothing is live across them
-        if m in ("call", "ret", "retn"):
+        if m == "call":
             i.uses = set()
 
     # ---- flag computation code ----
@@ -391,7 +475,9 @@ class Lifter:
             return ["r_esp = r_ebp; r_ebp = R32(r_esp); r_esp += 4;"]
         if m in ("ret", "retn", "repz ret", "rep ret"):
             n = ops[0].imm if ops else 0
-            return ["FN_RET(0x%08x); r_esp += %d; return;" % (fea, 4 + n)]
+            checks = "".join("if (R32(r_esp) == 0x%xu) { r_esp += %d; goto L_%08x; } " % (c, 4 + n, c)
+                             for c in sorted(self.conts) if c in self._ins)
+            return [checks + "FN_RET(0x%08x); r_esp += %d; return;" % (fea, 4 + n)]
         if m == "call":
             o = ops[0]
             ret = "0x%xu" % nxt
@@ -410,7 +496,20 @@ class Lifter:
                 tab, tg = self.tables[i.addr]
                 cases = " ".join("case 0x%xu: goto L_%08x;" % (t, t) for t in dict.fromkeys(tg))
                 return ["{ u32 t = R32(%s); switch (t) { %s default: UNSUP(0x%08x, \"jump table entry is not a known target\"); } }" % (self.addr_expr(o.mem), cases, i.addr)]
+            if o.type == X86_OP_REG:
+                if self.jmp_is_return(i, o):
+                    return ["FN_RET(0x%08x); return;" % fea]
+                return ["{ u32 t = %s; call_ind(t); return; }" % self.read(o, 32)]
             return ["{ u32 t = %s; call_ind(t); return; }" % self.read(o, 32)]
+        if m in ("loop", "loope", "loopne"):
+            if ops[0].imm not in self._ins:
+                return ['UNSUP(0x%08x, "loop target was not decoded");' % i.addr]
+            cond = {"loop": "r_ecx", "loope": "r_ecx && fZ", "loopne": "r_ecx && !fZ"}[m]
+            return ["r_ecx--; if (%s) goto L_%08x;" % (cond, ops[0].imm)]
+        if m == "jecxz":
+            if ops[0].imm not in self._ins:
+                return ['UNSUP(0x%08x, "jecxz target was not decoded");' % i.addr]
+            return ["if (!r_ecx) goto L_%08x;" % ops[0].imm]
         if m.startswith("j"):
             cc = m[1:]
             if cc not in COND:
@@ -519,15 +618,44 @@ class Lifter:
             else:
                 step = "u32 nc = a >> 31; a = (a << 1) | (u32)fC; fC = nc;"
             return ["{ u32 c = (%s) & 31; u32 a = %s; while (c--) { %s } fO = ((a >> 31) ^ (a >> 30)) & 1; %s }" % (cnt, a, step, self.write(ops[0], "a", 32))]
+        if m == "bswap":
+            bits = ops[0].size * 8
+            v = self.read(ops[0], bits)
+            if bits == 32:
+                return [self.write(ops[0], "__builtin_bswap32(%s)" % v, 32)]
+            if bits == 16:
+                return [self.write(ops[0], "__builtin_bswap16((u16)%s)" % v, 16)]
+            raise Unsupported(m)
         if self.is_sse(i):
             return self.sse(i)
         if m in ("movsb", "movsw", "movsd", "stosb", "stosw", "stosd", "rep movsb", "rep movsw", "rep movsd",
-                 "rep stosb", "rep stosw", "rep stosd", "lodsb", "lodsd", "repne scasb", "repe scasb", "scasb", "xlatb",
-                 "repe cmpsb", "repe cmpsd"):
+                 "rep stosb", "rep stosw", "rep stosd", "lodsb", "lodsd", "scasb", "scasw", "scasd", "xlatb",
+                 "repne scasb", "repne scasw", "repne scasd", "repe scasb", "repe scasw", "repe scasd",
+                 "cmpsb", "cmpsw", "cmpsd", "rep cmpsb", "rep cmpsw", "rep cmpsd",
+                 "repe cmpsb", "repe cmpsw", "repe cmpsd", "repne cmpsb", "repne cmpsw", "repne cmpsd"):
             return self.strop(i, m)
         if m.startswith("f"):
             return self.x87(i, m)
         raise Unsupported(m)
+
+    def jmp_is_return(self, i, o):
+        """A 'jmp reg' is a return when the register was just popped: Delphi string helpers pop the return
+        address into eax and jump to it. Otherwise it is a tail call to a method pointer ('jmp ebx')."""
+        reg = self.rname(o.reg)
+        order = [a for a in sorted(self._ins) if a < i.addr][-12:]
+        for a in reversed(order):
+            pre = self._ins[a]
+            m = pre.mn
+            if m in ("ret", "retn", "jmp", "call"):
+                break
+            if m.startswith("j"):
+                continue
+            if m == "pop" and pre.ops and pre.ops[0].type == X86_OP_REG and self.rname(pre.ops[0].reg) == reg:
+                return True
+            if m in ("mov", "xor", "add", "sub", "and", "or", "lea") and pre.ops and \
+                    pre.ops[0].type == X86_OP_REG and self.rname(pre.ops[0].reg) == reg:
+                return False
+        return False
 
     def shift(self, i, m):
         ops = i.ops
@@ -675,12 +803,24 @@ class Lifter:
             return ["r_eax = R32(r_esi); r_esi += rt_df ? -4 : 4;"]
         if base == "xlatb":
             return ["r_eax = (r_eax & 0xffffff00u) | R8(r_ebx + (r_eax & 0xffu));"]
-        if base == "scasb":
-            fl = self.flagcode("sub", 8, live)
-            step = "{ u32 a = r_eax & 0xffu; u32 b = R8(r_edi); u32 r = (a - b) & 0xffu; r_edi += rt_df ? -1 : 1; %s }" % fl
+        if base in ("scasb", "scasw", "scasd"):
+            fl = self.flagcode("sub", bits, set(ALLF) if m.startswith("rep") else live)
+            acc = {1: "r_eax & 0xffu", 2: "r_eax & 0xffffu", 4: "r_eax"}[w]
+            step = "{ u32 a = %s; u32 b = R%d(r_edi); u32 r = (a - b) & %s; r_edi += rt_df ? -%d : %d; %s }" % (
+                acc, bits, mask(bits), w, w, fl)
             if m.startswith("repne"):
-                return ["while (r_ecx) { %s r_ecx--; if (fZ) break; }" % step.replace("{ u32 a", "{ u32 a", 1) if "Z" in live else
-                        "while (r_ecx) { u32 a = r_eax & 0xffu; u32 b = R8(r_edi); r_edi += rt_df ? -1 : 1; r_ecx--; if (a == b) break; }"]
+                return ["while (r_ecx) { %s r_ecx--; if (fZ) break; }" % step]
+            if m.startswith("repe") or m.startswith("rep "):
+                return ["while (r_ecx) { %s r_ecx--; if (!fZ) break; }" % step]
+            return [step]
+        if base in ("cmpsb", "cmpsw", "cmpsd"):
+            fl = self.flagcode("sub", bits, set(ALLF) if m.startswith("rep") else live)
+            step = "{ u32 a = R%d(r_esi); u32 b = R%d(r_edi); u32 r = (a - b) & %s; r_esi += rt_df ? -%d : %d; r_edi += rt_df ? -%d : %d; %s }" % (
+                bits, bits, mask(bits), w, w, w, w, fl)
+            if m.startswith("repne"):
+                return ["while (r_ecx) { %s r_ecx--; if (fZ) break; }" % step]
+            if m.startswith("repe") or m.startswith("rep "):
+                return ["while (r_ecx) { %s r_ecx--; if (!fZ) break; }" % step]
             return [step]
         raise Unsupported(m)
 
@@ -786,6 +926,10 @@ class Lifter:
             return ["W16(%s, fcw);" % self.addr_expr(ops[0].mem)]
         if m == "fldcw":
             return ["fcw = R16(%s);" % self.addr_expr(ops[0].mem)]
+        if m == "fninit":
+            return ["ftop = 0; fsw = 0; fcw = 0x37F;"]
+        if m == "fbstp":
+            return ["fx_bcd_store(%s, ST(0)); FPOP();" % self.addr_expr(ops[0].mem)]
         if m == "fprem" or m == "fprem1":
             return ["ST(0) = fmodl(ST(0), ST(1)); fsw &= ~0x400;"]
         if m == "fscale":

@@ -47,6 +47,7 @@ u64 api_special(int id, ApiEnt *e, u32 *a);
 int api_special_id(const char *name);
 u32 api_start_thread(u32 fn, u32 param, u32 *a_out, void **out);
 u32 rt_tramp(u32 guest, int nargs);
+u32 rt_tramp_guest(u32 host);
 void gil_init(void);
 u32 rt_new_teb(u32 stack_lo, u32 stack_top);
 void rt_main_thread(u32 lo, u32 top);
