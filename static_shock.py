@@ -157,6 +157,8 @@ def main():
     sub.add_parser("functions", help="build and classify the function table")
     sub.add_parser("rtti", help="recover MSVC RTTI classes, vtables and vfunc slots")
     sub.add_parser("lift", help="lift the image to C")
+    p = sub.add_parser("asm", help="write the x86 listing of every lifted function to asm/")
+    p.add_argument("--exe", default="", help="original PE (default: project.exe or SS_EXE)")
     sub.add_parser("api", help="build the import table")
     sub.add_parser("manifest", help="write or verify the target manifest")
     sub.add_parser("inventory", help="write or check the machine-readable inventory")
@@ -191,6 +193,11 @@ def main():
         run(sys.executable, ROOT / "pipeline" / "rtti_names.py")
     elif args.cmd == "lift":
         lift()
+    elif args.cmd == "asm":
+        cmd = [sys.executable, ROOT / "pipeline" / "extract_asm.py"]
+        if args.exe:
+            cmd += ["--exe", args.exe]
+        run(*cmd)
     elif args.cmd == "api":
         api()
     elif args.cmd == "manifest":
