@@ -5,6 +5,7 @@ import sys
 import time
 
 import ida_auto
+import ida_bytes
 import ida_funcs
 import ida_ida
 import ida_name
@@ -69,6 +70,18 @@ with open(os.path.join(out, "segments.txt"), "w", encoding="utf-8") as seg:
     for s in idautils.Segments():
         seg.write("%s %08x-%08x\n" % (idc.get_segm_name(s), s, idc.get_segm_end(s)))
     seg.write("entry %08x\n" % ida_ida.inf_get_start_ea())
+
+with open(os.path.join(out, "code.txt"), "w", encoding="utf-8") as code:
+    start = None
+    for ea in range(cfg.CODE_LO, cfg.CODE_HI):
+        if ida_bytes.is_code(ida_bytes.get_flags(ea)):
+            if start is None:
+                start = ea
+        elif start is not None:
+            code.write("%08x %08x\n" % (start, ea))
+            start = None
+    if start is not None:
+        code.write("%08x %08x\n" % (start, cfg.CODE_HI))
 
 with open(os.path.join(out, "imports.txt"), "w", encoding="utf-8") as imports:
     for index in range(ida_nalt.get_import_module_qty()):

@@ -44,11 +44,12 @@ original machine code are used at run time.
 | **Import bridge** | stdcall, cdecl and thiscall, callbacks, guest pointers, file paths, x87 `ST(0)` returns and window presentation. |
 | **Build** | 32-bit MinGW host with explicit `.guest`/`.tail`/`.text` layout, pre-CRT reservation, stack/heap reserves and a linker map. |
 | **WebAssembly** | wasm32 host layer: guest image in linear memory, sentinel dispatch, x87 specials, browser input and a chunked preload shell. Imports are per-target and fail loudly when missing. |
+| **Delphi** | VCL targets: SEH continuations, dynamic methods, MakeObjectInstance thunks, DFM resources and Delphi exception reporting. |
 | **Analysis** | IDA export with pseudocode chunks, an external-analyzer backend with per-function asm/pseudocode, and `src`-aligned x86 listings in `asm/`. |
 | **RTTI** | MSVC type descriptors, complete object locators, vtables, base classes and positional vfunc slots. |
 | **Evidence** | Target manifest, machine-readable inventory, claim schema, unknowns registry and a fail-closed readiness report. |
 | **Workflow** | Per-function work status and a self-contained HTML progress dashboard. |
-| **Docs** | 22 focused guides: model, lifting, ABI, host, build, debugging, porting, WASM, x86-64, naming, evidence, verification. |
+| **Docs** | 23 focused guides: model, lifting, ABI, host, build, debugging, porting, WASM, Delphi, x86-64, naming, evidence, verification. |
 
 ## Pipeline
 

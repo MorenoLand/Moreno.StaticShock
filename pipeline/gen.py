@@ -41,7 +41,19 @@ starts = sorted(int(r["ea"], 16) for r in rows)
 names = {int(r["ea"], 16): r["name"] for r in rows}
 SKIP = cfg.skip_functions()
 WRAP = cfg.wrap_functions()
-lf = Lifter(im, starts, names, code_lo=cfg.CODE_LO, code_hi=cfg.CODE_HI)
+code_map = None
+code_heads = None
+code_path = os.path.join(cfg.ida_dump(), "code.txt")
+if os.path.exists(code_path):
+    code_map = bytearray(cfg.CODE_HI - cfg.CODE_LO)
+    code_heads = set()
+    for line in open(code_path, encoding="utf-8"):
+        lo, hi = (int(x, 16) for x in line.split())
+        code_heads.add(lo)
+        for ea in range(lo, hi):
+            if cfg.CODE_LO <= ea < cfg.CODE_HI:
+                code_map[ea - cfg.CODE_LO] = 1
+lf = Lifter(im, starts, names, code_lo=cfg.CODE_LO, code_hi=cfg.CODE_HI, code_heads=code_heads)
 todo = [e for e in starts if (only is None or e in only) and e not in SKIP]
 
 t0 = time.time()
@@ -66,6 +78,12 @@ for e in todo:
 text_lo, text_hi = cfg.CODE_LO, cfg.CODE_HI
 guessed = set()
 sizes = {int(r["ea"], 16): int(r["size"]) for r in rows}
+
+
+def known_code(v):
+    return code_map is None or (cfg.CODE_LO <= v < cfg.CODE_HI and code_map[v - cfg.CODE_LO])
+
+
 for nm, vs, va, rs, rp in im.secs:
     if nm == ".text" or not rs:
         continue
@@ -77,14 +95,16 @@ for nm, vs, va, rs, rp in im.secs:
         k = bisect.bisect_right(starts, v) - 1
         outside = k < 0 or (v != starts[k] and v >= starts[k] + sizes[starts[k]])
         prev = im.read(v - 1, 1)
-        if outside and (prev == b"\xcc" or v % 16 == 0):
+        if outside and known_code(v) and (prev == b"\xcc" or v % 16 == 0):
             lf.calls.add(v)
             guessed.add(v)
 # code addresses used as immediate operands (default allocators and callbacks stored with `mov [x], offset f`)
 for v in sorted(lf.imm_cands):
     k = bisect.bisect_right(starts, v) - 1
-    outside = k < 0 or (v != starts[k] and v >= starts[k] + sizes[starts[k]])
-    if outside and (im.read(v - 1, 1) == b"\xcc" or v % 16 == 0):
+    if not known_code(v) or (k >= 0 and v == starts[k]):
+        continue
+    outside = k < 0 or v >= starts[k] + sizes[starts[k]]
+    if not outside or im.read(v - 1, 1) == b"\xcc" or v % 16 == 0:
         lf.calls.add(v)
         guessed.add(v)
 

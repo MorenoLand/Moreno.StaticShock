@@ -50,6 +50,12 @@ static LONG WINAPI on_crash(EXCEPTION_POINTERS *e)
             e->ExceptionRecord->NumberParameters > 0 && e->ExceptionRecord->ExceptionInformation[0] ? "write" : "read",
             e->ExceptionRecord->NumberParameters > 1 ? (void *)e->ExceptionRecord->ExceptionInformation[1] : NULL,
             r_esp, r_eax, r_ecx, r_ebp, r_esi, r_edi, r_edx, r_ebx);
+    if ((e->ExceptionRecord->ExceptionCode & 0xffffffffu) == 0x0eedfadeu && e->ExceptionRecord->NumberParameters > 1) {
+        u32 obj = (u32)e->ExceptionRecord->ExceptionInformation[1];
+        u32 s = obj ? *(u32 *)(uintptr_t)(obj + 4) : 0;
+        if (s) fprintf(stderr, "      delphi exception object %08x message: %.*s\n", obj, (int)*(u32 *)(uintptr_t)(s - 4), (char *)(uintptr_t)s);
+        else fprintf(stderr, "      delphi exception object %08x (no message)\n", obj);
+    }
     /* the address in bin/lift.map is the host address relative to the linked image base 0x10000000 */
     fprintf(stderr, "      map address %08lx (look it up in bin/lift.map)\n",
             0x10000000ul + (unsigned long)((char *)e->ExceptionRecord->ExceptionAddress - (char *)GetModuleHandleA(NULL)));

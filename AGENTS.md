@@ -20,7 +20,8 @@ Read the docs in this order:
 11. `docs/10-debugging.md`
 12. `docs/11-porting-checklist.md`
 13. `docs/12-wasm.md`
-14. `docs/13-lessons.md`
+14. `docs/22-delphi.md`
+15. `docs/13-lessons.md`
 
 ## Non-negotiables
 
