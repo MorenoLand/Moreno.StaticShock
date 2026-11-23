@@ -86,7 +86,8 @@ materialised at every return. `fbstp` writes packed BCD through `fx_bcd_store`.
 VCL stores and retrieves the window procedure through `SetWindowLongA`/`GetWindowLongA` with index
 `-4`, and `GetClassInfoA`/`CallWindowProcA` also carry it. The host trampoline is a different
 pointer from the guest address. Translate both directions through `rt_tramp`/`rt_tramp_guest`, or
-the next `WndProc` comparison fails and the form stops receiving messages.
+the next `WndProc` comparison fails and the form stops receiving messages. Font enumeration
+callbacks (`EnumFontFamiliesEx`, `EnumFonts`, `EnumDisplayMonitors`) need the same trampoline wrap.
 
 ## DFM resources
 
