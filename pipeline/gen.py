@@ -95,7 +95,8 @@ for nm, vs, va, rs, rp in im.secs:
         k = bisect.bisect_right(starts, v) - 1
         outside = k < 0 or (v != starts[k] and v >= starts[k] + sizes[starts[k]])
         prev = im.read(v - 1, 1)
-        if outside and known_code(v) and (prev == b"\xcc" or v % 16 == 0):
+        in_code = code_map is not None and cfg.CODE_LO <= v < cfg.CODE_HI and code_map[v - cfg.CODE_LO]
+        if outside and (in_code or (known_code(v) and (prev == b"\xcc" or v % 16 == 0))):
             lf.calls.add(v)
             guessed.add(v)
 # code addresses used as immediate operands (default allocators and callbacks stored with `mov [x], offset f`)
@@ -104,7 +105,8 @@ for v in sorted(lf.imm_cands):
     if not known_code(v) or (k >= 0 and v == starts[k]):
         continue
     outside = k < 0 or v >= starts[k] + sizes[starts[k]]
-    if not outside or im.read(v - 1, 1) == b"\xcc" or v % 16 == 0:
+    in_code = code_map is not None and cfg.CODE_LO <= v < cfg.CODE_HI and code_map[v - cfg.CODE_LO]
+    if not outside or in_code or im.read(v - 1, 1) == b"\xcc" or v % 16 == 0:
         lf.calls.add(v)
         guessed.add(v)
 
@@ -136,7 +138,7 @@ while True:
                 mn[t.split()[0]] += 1
         extra_lifted += 1
 called = set(lf.calls)
-missing = sorted(c for c in called if c not in texts and c not in set(starts))
+missing = sorted(c for c in called if c not in texts and c not in set(starts) and c not in SKIP)
 print("lifted %d functions (%d of them blocks called from other functions) in %.1fs; %d with unsupported instructions; %d call targets still unlifted"
       % (len(texts), extra_lifted, time.time() - t0, len(unsup_by_fn), len(missing)))
 print("unsupported mnemonics:", mn.most_common(40))
@@ -156,7 +158,7 @@ def emit_file(name, text):
         f.write(text)
 
 
-allf = sorted(set(starts) | set(missing) | set(texts))
+allf = sorted((set(starts) | set(missing) | set(texts)) - set(SKIP))
 NL = chr(10)
 emit_file("protos.h", '#include "rt.h"' + NL + "".join("void f_%08x(void);" % e + NL for e in allf) + "".join("void f_%08x_lifted(void);" % e + NL for e in sorted(WRAP)))
 cat = {int(r["ea"], 16): r.get("category", "app") for r in csv.DictReader(open(os.path.join(cfg.DATA, "functions.tsv"), encoding="utf-8"), delimiter="\t")}

@@ -66,6 +66,7 @@ u16 fx_sw(void);
 __attribute__((noreturn)) void rt_unsup(u32 addr, const char *msg);
 #define UNSUP(a, msg) rt_unsup((a), (msg))
 void call_ind(u32 target);
+int rt_is_thunk(u32 target);                    /* Delphi MakeObjectInstance thunk (guest heap): E8 rel32 / 59 E9 rel32 */
 u32 gcall(u32 addr, u32 ecx_value, int cdecl_, int n, ...);   /* api.c: call the guest function at addr from native code; ecx for a thiscall, cdecl_ = 1 when the caller removes the n 32-bit arguments; returns eax.
                                                                   Declared here and not in api.h, which includes <windows.h> on Windows: the host bridges (src/host) must not. */
 

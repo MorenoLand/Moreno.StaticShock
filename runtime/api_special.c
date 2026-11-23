@@ -5,12 +5,13 @@
 #include <string.h>
 #include <math.h>
 #if defined(_WIN32)
+#include <commdlg.h>
 
 enum {
     S_NONE, S_GETMODULEHANDLE, S_GETPROCADDRESS, S_LOADLIBRARY, S_REGISTERCLASS, S_REGISTERCLASSEX, S_SETTIMER,
     S_CREATETHREAD, S_SETWINDOWLONG, S_GETWINDOWLONG, S_GETCLASSINFO, S_CALLWINDOWPROC, S_SETUNHANDLED, S_WGLGETPROC, S_DIALOG, S_FLSALLOC, S_GETMODULEFILENAME, S_ENUMWINDOWS, S_ENUMCHILD, S_ENUMTHREAD,
     S_CREATEFILE, S_WRITEFILE, S_CLOSEHANDLE, S_SWAPBUFFERS, S_INITTERM, S_INITTERM_E, S_GETMALLOC, S_QSORT, S_BEGINTHREAD, S_BEGINTHREADEX, S_ENDTHREAD, S_BSEARCH, S_CIPOW, S_SETDIBITS, S_MATHFP,
-    S_ENUMFONTEX, S_ENUMFONT
+    S_ENUMFONTEX, S_ENUMFONT, S_FILEDIALOG
 };
 
 static const struct { const char *name; int id; } specials[] = {
@@ -19,6 +20,7 @@ static const struct { const char *name; int id; } specials[] = {
     {"RegisterClassA", S_REGISTERCLASS}, {"RegisterClassExA", S_REGISTERCLASSEX}, {"SetTimer", S_SETTIMER},
     {"CreateThread", S_CREATETHREAD}, {"SetWindowLongA", S_SETWINDOWLONG},
     {"GetWindowLongA", S_GETWINDOWLONG}, {"GetClassInfoA", S_GETCLASSINFO}, {"CallWindowProcA", S_CALLWINDOWPROC},
+    {"GetOpenFileNameA", S_FILEDIALOG}, {"GetSaveFileNameA", S_FILEDIALOG},
     {"SetUnhandledExceptionFilter", S_SETUNHANDLED}, {"wglGetProcAddress", S_WGLGETPROC}, {"FlsAlloc", S_FLSALLOC}, {"GetModuleFileNameA", S_GETMODULEFILENAME},
     {"EnumWindows", S_ENUMWINDOWS}, {"EnumChildWindows", S_ENUMCHILD}, {"EnumThreadWindows", S_ENUMTHREAD},
     {"EnumFontFamiliesExA", S_ENUMFONTEX}, {"EnumFontFamiliesExW", S_ENUMFONTEX},
@@ -232,7 +234,14 @@ u64 api_special(int id, ApiEnt *e, u32 *a)
     }
     case S_CALLWINDOWPROC: {
         u32 b[5] = { a[0], a[1], a[2], a[3], a[4] };
-        if (b[0] >= SS_IMAGE_BASE && b[0] < SS_IMAGE_END) b[0] = wndproc(b[0]);
+        if ((b[0] >= SS_IMAGE_BASE && b[0] < SS_IMAGE_END) || rt_is_thunk(b[0])) b[0] = wndproc(b[0]);
+        return api_call_real(e, b);
+    }
+    case S_FILEDIALOG: {
+        OPENFILENAMEA ofn;
+        memcpy(&ofn, (void *)(uintptr_t)a[0], sizeof ofn);
+        if (ofn.lpfnHook) ofn.lpfnHook = (LPOFNHOOKPROC)(uintptr_t)rt_tramp((u32)(uintptr_t)ofn.lpfnHook, 4);
+        u32 b[1] = { (u32)(uintptr_t)&ofn };
         return api_call_real(e, b);
     }
     case S_CREATETHREAD: {

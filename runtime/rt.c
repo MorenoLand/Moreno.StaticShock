@@ -187,13 +187,19 @@ void call_ind(u32 target)
 
 /* Delphi MakeObjectInstance thunk: E8 rel32 -> block: 59 (pop ecx) E9 rel32 (StdWndProc). The 8-byte TMethod
  * record (method, instance) sits at thunk+5 and StdWndProc expects its address in ECX. */
-static int delphi_thunk(u32 target)
+int rt_is_thunk(u32 target)
 {
     if (!rt_readable(target, 13) || R8(target) != 0xE8) return 0;
     u32 block = target + 5 + R32(target + 1);
     if (!rt_readable(block, 6) || R8(block) != 0x59 || R8(block + 1) != 0xE9) return 0;
+    return rt_readable(block + 6 + R32(block + 2), 1);
+}
+
+static int delphi_thunk(u32 target)
+{
+    if (!rt_is_thunk(target)) return 0;
+    u32 block = target + 5 + R32(target + 1);
     u32 proc = block + 6 + R32(block + 2);
-    if (!rt_readable(proc, 1)) return 0;
     r_ecx = target + 5;
     call_ind(proc);
     return 1;

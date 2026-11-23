@@ -199,10 +199,10 @@ class Lifter:
                 i.succ = [nextaddr]
                 a = nextaddr
         self.tables = tables
-        self.conts = self.find_conts(ins, ea, owner_hi)
+        self.conts = self.find_conts(ins, ea)
         return ins
 
-    def find_conts(self, ins, ea, owner_hi):
+    def find_conts(self, ins, ea):
         """Addresses a function pushes and then returns into (the Delphi SEH epilogue pops the frame, pushes a
         continuation and lets `ret` jump to it). The backward walk counts pushes and pops; a pushed code address
         that is still on top at the return is a continuation."""
@@ -229,7 +229,7 @@ class Lifter:
                 if consume and m == "push":
                     o = i.ops[0] if i.ops else None
                     t = (o.imm & 0xFFFFFFFF) if o is not None and o.type == X86_OP_IMM else None
-                    if need == 0 and t is not None and ea <= t < owner_hi and t != ret and self.im.read(t, 1) \
+                    if need == 0 and t is not None and ea <= t < self.code_hi and t != ret and self.im.read(t, 1) \
                             and (self.code_heads is None or t in self.code_heads):
                         out.add(t)              # `push continuation; call cleanup; ret`: the address is not a call argument
                         break
@@ -238,12 +238,12 @@ class Lifter:
                 if m == "push":
                     if need == 0:
                         o = i.ops[0] if i.ops else None
-                        if o is not None and o.type == X86_OP_IMM:
-                            t = o.imm & 0xFFFFFFFF
-                            if ea <= t < self.code_hi and t != ret and self.im.read(t, 1) \
-                                    and (self.code_heads is None or t in self.code_heads):
-                                out.add(t)
-                        break
+                        t = (o.imm & 0xFFFFFFFF) if o is not None and o.type == X86_OP_IMM else None
+                        if t is not None and ea <= t < self.code_hi and t != ret and self.im.read(t, 1) \
+                                and (self.code_heads is None or t in self.code_heads):
+                            out.add(t)
+                            break
+                        continue                # a register or a small constant is a call argument: keep walking
                     need -= 1
                     continue
                 if m == "pop":

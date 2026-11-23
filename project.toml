@@ -19,6 +19,8 @@ icon        = ""
 [build]
 mingw32 = "D:/msys64/mingw32"
 libs    = ["psapi", "winmm", "ole32", "gdi32", "user32", "shell32", "advapi32", "comdlg32", "winspool"]
+# empty: link the first recomp/data/*.res (original resources extracted from the PE)
+resources = ""
 cflags  = ["-O1", "-w"]
 stack   = 0x10000000
 heap    = 0x10000000
