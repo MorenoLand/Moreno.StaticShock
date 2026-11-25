@@ -9,7 +9,7 @@
 
 enum {
     S_NONE, S_GETMODULEHANDLE, S_GETPROCADDRESS, S_LOADLIBRARY, S_REGISTERCLASS, S_REGISTERCLASSEX, S_SETTIMER,
-    S_CREATETHREAD, S_SETWINDOWLONG, S_GETWINDOWLONG, S_GETCLASSINFO, S_CALLWINDOWPROC, S_SETUNHANDLED, S_WGLGETPROC, S_DIALOG, S_FLSALLOC, S_GETMODULEFILENAME, S_ENUMWINDOWS, S_ENUMCHILD, S_ENUMTHREAD,
+    S_CREATETHREAD, S_SETWINDOWLONG, S_GETWINDOWLONG, S_GETCLASSINFO, S_CALLWINDOWPROC, S_SETUNHANDLED, S_RAISE, S_UNWIND, S_WGLGETPROC, S_DIALOG, S_FLSALLOC, S_GETMODULEFILENAME, S_ENUMWINDOWS, S_ENUMCHILD, S_ENUMTHREAD,
     S_CREATEFILE, S_WRITEFILE, S_CLOSEHANDLE, S_SWAPBUFFERS, S_INITTERM, S_INITTERM_E, S_GETMALLOC, S_QSORT, S_BEGINTHREAD, S_BEGINTHREADEX, S_ENDTHREAD, S_BSEARCH, S_CIPOW, S_SETDIBITS, S_MATHFP,
     S_ENUMFONTEX, S_ENUMFONT, S_FILEDIALOG
 };
@@ -21,7 +21,7 @@ static const struct { const char *name; int id; } specials[] = {
     {"CreateThread", S_CREATETHREAD}, {"SetWindowLongA", S_SETWINDOWLONG},
     {"GetWindowLongA", S_GETWINDOWLONG}, {"GetClassInfoA", S_GETCLASSINFO}, {"CallWindowProcA", S_CALLWINDOWPROC},
     {"GetOpenFileNameA", S_FILEDIALOG}, {"GetSaveFileNameA", S_FILEDIALOG},
-    {"SetUnhandledExceptionFilter", S_SETUNHANDLED}, {"wglGetProcAddress", S_WGLGETPROC}, {"FlsAlloc", S_FLSALLOC}, {"GetModuleFileNameA", S_GETMODULEFILENAME},
+    {"SetUnhandledExceptionFilter", S_SETUNHANDLED}, {"RaiseException", S_RAISE}, {"RtlUnwind", S_UNWIND}, {"wglGetProcAddress", S_WGLGETPROC}, {"FlsAlloc", S_FLSALLOC}, {"GetModuleFileNameA", S_GETMODULEFILENAME},
     {"EnumWindows", S_ENUMWINDOWS}, {"EnumChildWindows", S_ENUMCHILD}, {"EnumThreadWindows", S_ENUMTHREAD},
     {"EnumFontFamiliesExA", S_ENUMFONTEX}, {"EnumFontFamiliesExW", S_ENUMFONTEX},
     {"EnumFontsA", S_ENUMFONT}, {"EnumFontsW", S_ENUMFONT}, {"EnumFontFamiliesA", S_ENUMFONT}, {"EnumFontFamiliesW", S_ENUMFONT},
@@ -41,6 +41,105 @@ static int is_game_log(const char *path)
 {
     size_t n = path ? strlen(path) : 0;
     return n >= 16 && !_stricmp(path + n - 16, "game_console.log");
+}
+
+/* ---- guest SEH: Delphi frames live on the guest fs:[0] chain, not the host TEB ---- */
+#define EH_UNWINDING 2u
+#define EH_EXIT_UNWIND 4u
+static u32 unhandled_filter;
+
+static u32 scratch(u32 n)
+{
+    r_esp = (r_esp - n) & ~15u;
+    return r_esp;
+}
+
+static struct { u32 code, flags, nargs, args[15]; } last_raise;
+
+static u64 seh_raise(u32 code, u32 flags, u32 nargs, u32 args)
+{
+    u32 save_esp = r_esp;
+    u32 rec = scratch(0x50 + 0x2D0 + 0x20);
+    u32 ctx = rec + 0x50, disp = ctx + 0x2D0;
+    memset((void *)(uintptr_t)rec, 0, 0x50 + 0x2D0 + 0x20);
+    W32(rec, code);
+    W32(rec + 4, flags);
+    W32(rec + 0xC, R32(save_esp));
+    if (nargs > 15) nargs = 15;
+    W32(rec + 0x10, nargs);
+    for (u32 i = 0; i < nargs; ++i) W32(rec + 0x14 + 4 * i, R32(args + 4 * i));
+    last_raise.code = code; last_raise.flags = flags; last_raise.nargs = nargs;
+    for (u32 i = 0; i < nargs; ++i) last_raise.args[i] = R32(args + 4 * i);
+    W32(ctx, 0x10007);                            /* CONTEXT_FULL */
+    W32(ctx + 0xB8, R32(save_esp));               /* Eip */
+    W32(ctx + 0xC4, save_esp + 4);                /* Esp */
+    W32(ctx + 0xB4, r_ebp); W32(ctx + 0xB0, r_eax); W32(ctx + 0xAC, r_ecx); W32(ctx + 0xA8, r_edx); W32(ctx + 0xA4, r_ebx);
+    W32(ctx + 0xA0, r_esi); W32(ctx + 0x9C, r_edi);
+    u32 frame = R32(rt_teb);
+    int guard = 0;
+    while (frame != 0xFFFFFFFFu && frame != 0 && guard++ < 10000) {
+        u32 next = R32(frame);
+        u32 handler = R32(frame + 4);
+        if (rt_trace || getenv("RECOMP_EXLOG"))
+            fprintf(stderr, "[seh] code %08x: frame %08x handler %08x next %08x\n", code, frame, handler, next);
+        u32 res = gcall(handler, 0, 1, 4, rec, frame, ctx, disp);
+        if (res == 0) {                           /* ExceptionContinueExecution */
+            r_esp = save_esp;
+            return 0;
+        }
+        frame = next;
+    }
+    if (unhandled_filter) {
+        u32 ptrs = rec + 0x50 + 0x2D0;
+        W32(ptrs, rec);
+        W32(ptrs + 4, ctx);
+        u32 res = gcall(unhandled_filter, 0, 0, 1, ptrs);
+        if (res == 0xFFFFFFFFu) { r_esp = save_esp; return 0; }
+    }
+    fprintf(stderr, "unhandled exception %08x at %08x (guest esp %08x)\n", code, R32(save_esp), save_esp);
+    fflush(stderr);
+    ExitProcess(5);
+    return 0;
+}
+
+static u64 seh_unwind(u32 target, u32 ip, u32 rec, u32 retval)
+{
+    (void)ip;
+    (void)retval;
+    u32 save_esp = r_esp;
+    u32 mem = scratch(0x50 + 0x2D0 + 0x20);
+    u32 ctx = mem + 0x50, disp = ctx + 0x2D0;
+    if (!rec) {
+        rec = mem;
+        memset((void *)(uintptr_t)rec, 0, 0x50);
+        W32(rec, 0xC0000027u);                    /* STATUS_UNWIND */
+    }
+    memset((void *)(uintptr_t)ctx, 0, 0x2D0 + 0x20);
+    W32(rec + 4, R32(rec + 4) | (target ? EH_UNWINDING : (EH_UNWINDING | EH_EXIT_UNWIND)));
+    u32 frame = R32(rt_teb);
+    int guard = 0;
+    while (frame != 0xFFFFFFFFu && frame != 0 && frame != target && guard++ < 10000) {
+        u32 next = R32(frame);
+        u32 handler = R32(frame + 4);
+        if (rt_trace || getenv("RECOMP_EXLOG"))
+            fprintf(stderr, "[seh] unwind: frame %08x handler %08x next %08x\n", frame, handler, next);
+        gcall(handler, 0, 1, 4, rec, frame, ctx, disp);
+        W32(rt_teb, next);
+        frame = next;
+    }
+    W32(rt_teb, frame);
+    r_esp = save_esp;
+    return 0;
+}
+
+void rt_reraise(void)
+{
+    u32 frame = R32(rt_teb);
+    if (frame != 0xFFFFFFFFu && frame != 0)
+        W32(rt_teb, R32(frame));
+    u32 args = scratch(16 * 4);
+    for (u32 i = 0; i < last_raise.nargs; ++i) W32(args + 4 * i, last_raise.args[i]);
+    seh_raise(last_raise.code, last_raise.flags, last_raise.nargs, args);
 }
 
 int api_special_id(const char *name)
@@ -280,8 +379,15 @@ u64 api_special(int id, ApiEnt *e, u32 *a)
         u32 b[1] = { a[0] ? rt_tramp(a[0], 1) : 0 };    /* the destructor callback runs on host threads */
         return api_call_real(e, b);
     }
-    case S_SETUNHANDLED:
-        return 0;                                       /* a host crash filter cannot run guest code */
+    case S_SETUNHANDLED: {
+        u32 old = unhandled_filter;
+        unhandled_filter = a[0];
+        return old;
+    }
+    case S_RAISE:
+        return seh_raise(a[0], a[1], a[2], a[3]);
+    case S_UNWIND:
+        return seh_unwind(a[0], a[1], a[2], a[3]);
     case S_INITTERM:
     case S_INITTERM_E: {
         for (u32 p = a[0]; p < a[1]; p += 4) {

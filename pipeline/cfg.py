@@ -195,6 +195,15 @@ def wrap_functions():
     return {_int(x) for x in LIFT_CFG.get("wrap", [])}
 
 
+def extra_functions():
+    """Code blocks that are neither IDA functions nor discovered call targets (continuations reached by a register jump)."""
+    return {_int(x) for x in LIFT_CFG.get("extra", [])}
+
+
+def data_ranges():
+    return [(_int(lo), _int(hi)) for lo, hi in LIFT_CFG.get("data", [])]
+
+
 def chunk_size():
     return int(LIFT_CFG.get("chunk", 120))
 

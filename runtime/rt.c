@@ -205,6 +205,53 @@ static int delphi_thunk(u32 target)
     return 1;
 }
 
+/* ---- Delphi exception landings (see rt.h) ---- */
+LandRec *rt_land_top;
+u32 rt_land_target;
+
+void rt_land_enter(LandRec *r, u32 owner)
+{
+    r->owner = owner;
+    r->esp = r_esp;
+    r->prev = rt_land_top;
+    rt_land_top = r;
+}
+
+void rt_land_leave(LandRec *r)
+{
+    rt_land_top = r->prev;
+}
+
+static int cmp_land(const void *k, const void *e)
+{
+    u32 a = *(const u32 *)k, b = ((const LandEnt *)e)->addr;
+    return a < b ? -1 : a > b;
+}
+
+void jmp_ind(u32 t)
+{
+    if ((t & 0xFF000000u) != 0xFE000000u && land_count) {
+        const LandEnt *le = bsearch(&t, land_table, land_count, sizeof(LandEnt), cmp_land);
+        if (le) {
+            u32 record = R32(rt_teb);
+            for (LandRec *r = rt_land_top; r; r = r->prev) {
+                if (r->owner == le->owner && r->esp > record) {
+                    rt_land_target = t;
+                    rt_land_top = r;
+                    if (getenv("RECOMP_EXLOG"))
+                        fprintf(stderr, "[exc] landing %08x in %08x (frame %08x)\n", t, le->owner, record);
+                    __builtin_longjmp(r->jb, 1);
+                }
+            }
+            fprintf(stderr, "exception landing %08x: no active %08x on the guest stack (frame %08x)\n", t, le->owner, record);
+            for (LandRec *r = rt_land_top; r; r = r->prev)
+                fprintf(stderr, "      active owner %08x entry esp %08x\n", r->owner, r->esp);
+            rt_unsup(t, "exception landing without an active owner function");
+        }
+    }
+    call_ind(t);
+}
+
 #if !defined(__EMSCRIPTEN__)
 /* map the sections of the original image at their own addresses and copy the raw bytes */
 extern const unsigned char rt_image_blob[] __attribute__((weak));     /* the original exe, embedded by scripts/build.sh */

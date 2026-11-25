@@ -155,8 +155,9 @@ int main(int argc, char **argv)
     }
 
     char dir[MAX_PATH];
-    if (argc >= 2) {
-        if (!GetFullPathNameA(argv[1], sizeof dir, dir, NULL)) return 2;
+    const char *env_dir = getenv("RECOMP_DIR");
+    if (env_dir) {
+        if (!GetFullPathNameA(env_dir, sizeof dir, dir, NULL)) return 2;
     } else {
         if (!GetModuleFileNameA(NULL, dir, sizeof dir)) return 2;
         char *slash = strrchr(dir, '\\');
@@ -212,11 +213,13 @@ int main(int argc, char **argv)
         W32(s->ea, sentinel);
     }
 
-    fprintf(stderr, "boot: image mapped, %d imports bound, entering %08x\n", api_static_n, OEP);
+    if (getenv("RECOMP_BOOT_LOG"))
+        fprintf(stderr, "boot: image mapped, %d imports bound, entering %08x\n", api_static_n, OEP);
     r_esp -= 4;
     W32(r_esp, 0xDEAD0000u);
     call_ind(OEP);
-    fprintf(stderr, "guest returned, eax=%08x\n", r_eax);
+    if (getenv("RECOMP_BOOT_LOG"))
+        fprintf(stderr, "guest returned, eax=%08x\n", r_eax);
     return (int)r_eax;
 }
 
@@ -324,30 +327,14 @@ int main(int argc, char **argv)
         return 77;
     }
 
-    /* without an argument the client folder is the program's own folder, as for the original exe, which sits in its game
-     * folder (put the game data next to the executable) */
-    /* the first argument is the client folder when it names an existing path; otherwise (a switch such as
-     * -listscriptfunctions, a custom URL) every argument goes to the client and the folder is the default one */
+    /* the client folder is RECOMP_DIR when set, the program's data folder, or the current folder; arguments
+     * are passed to the guest unchanged (the runtime does not virtualize GetCommandLineA) */
     struct stat st;
-    int has_folder = argc >= 2 && argv[1][0] != '-' && stat(argv[1], &st) == 0;
-    const char *folder = has_folder ? argv[1] : ".";
-    char self[PATH_MAX];
-#if defined(__linux__)
-    if (!has_folder) {
-        ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
-        if (n > 0) {
-            self[n] = 0;
-            char *slash = strrchr(self, '/');
-            if (slash && strstr(slash, "ld-linux") == NULL) {         /* started through a loader: keep the current folder */
-                *slash = 0;
-                folder = self[0] ? self : "/";
-            }
-        }
-    }
-#endif
+    const char *folder = getenv("RECOMP_DIR");
+    if (!folder) folder = ".";
     char dir[PATH_MAX];
     if (!realpath(folder, dir)) {
-        fprintf(stderr, "folder not found: %s\nusage: %s [game folder]\n", folder, SS_HOST_NAME);
+        fprintf(stderr, "folder not found: %s\nusage: %s\n", folder, SS_HOST_NAME);
         return 2;
     }
     if (stat(dir, &st) == 0 && !S_ISDIR(st.st_mode)) {     /* a path to a file in the folder is accepted too */
@@ -358,7 +345,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "cannot enter %s\n", dir);
         return 2;
     }
-    w32_init(dir, has_folder ? argc - 2 : argc - 1, has_folder ? argv + 2 : argv + 1);
+    w32_init(dir, argc - 1, argv + 1);
     gil_init();
 
     u32 stack = rt_sys_alloc(0x800000);
@@ -375,11 +362,13 @@ int main(int argc, char **argv)
         W32(s->ea, api_add_emu(s->module, s->name, fn, s->nargs, s->cdecl_));
     }
 
-    fprintf(stderr, "boot: image mapped, %d imports bound (%d without emulation), entering %08x\n", api_static_n, missing, OEP);
+    if (getenv("RECOMP_BOOT_LOG"))
+        fprintf(stderr, "boot: image mapped, %d imports bound (%d without emulation), entering %08x\n", api_static_n, missing, OEP);
     r_esp -= 4;
     W32(r_esp, 0xDEAD0000u);
     call_ind(OEP);
-    fprintf(stderr, "guest returned, eax=%08x\n", r_eax);
+    if (getenv("RECOMP_BOOT_LOG"))
+        fprintf(stderr, "guest returned, eax=%08x\n", r_eax);
     return (int)r_eax;
 }
 #endif

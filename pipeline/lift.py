@@ -499,8 +499,8 @@ class Lifter:
             if o.type == X86_OP_REG:
                 if self.jmp_is_return(i, o):
                     return ["FN_RET(0x%08x); return;" % fea]
-                return ["{ u32 t = %s; call_ind(t); return; }" % self.read(o, 32)]
-            return ["{ u32 t = %s; call_ind(t); return; }" % self.read(o, 32)]
+                return ["{ u32 t = %s; jmp_ind(t); return; }" % self.read(o, 32)]
+            return ["{ u32 t = %s; jmp_ind(t); return; }" % self.read(o, 32)]
         if m in ("loop", "loope", "loopne"):
             if ops[0].imm not in self._ins:
                 return ['UNSUP(0x%08x, "loop target was not decoded");' % i.addr]

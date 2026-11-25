@@ -90,6 +90,10 @@ timeout  = 900
 skip_categories = ["other"]
 skip = []
 wrap = []
+# continuations reached only by a register/memory jump (not IDA functions)
+extra = []
+# [[lo, hi], ...] ranges that IDA marked as functions but are data; kept in image.bin, never lifted
+data = []
 chunk = 120
 max_functions_per_file = 150
 

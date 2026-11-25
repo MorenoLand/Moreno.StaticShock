@@ -66,7 +66,26 @@ u16 fx_sw(void);
 __attribute__((noreturn)) void rt_unsup(u32 addr, const char *msg);
 #define UNSUP(a, msg) rt_unsup((a), (msg))
 void call_ind(u32 target);
+void jmp_ind(u32 target);                       /* indirect jmp: a landing resumes its owner, otherwise a tail call */
 int rt_is_thunk(u32 target);                    /* Delphi MakeObjectInstance thunk (guest heap): E8 rel32 / 59 E9 rel32 */
+
+/* Delphi exception landings: try/except pushes {next, handler, ebp} on fs:[0]; the RTL unwinds and
+ * jumps into the middle of the function that owns the frame. The generator wraps that function: the
+ * wrapper records itself here and setjmps; jmp_ind finds the innermost active owner and longjmps. */
+typedef struct LandRec {
+    void *jb[5];
+    struct LandRec *prev;
+    u32 owner;
+    u32 esp;
+} LandRec;
+typedef struct { u32 addr; u32 owner; } LandEnt;
+extern const LandEnt land_table[];
+extern const unsigned land_count;
+extern u32 rt_land_target;
+extern LandRec *rt_land_top;
+void rt_land_enter(LandRec *r, u32 owner);
+void rt_land_leave(LandRec *r);
+void rt_reraise(void);
 u32 gcall(u32 addr, u32 ecx_value, int cdecl_, int n, ...);   /* api.c: call the guest function at addr from native code; ecx for a thiscall, cdecl_ = 1 when the caller removes the n 32-bit arguments; returns eax.
                                                                   Declared here and not in api.h, which includes <windows.h> on Windows: the host bridges (src/host) must not. */
 

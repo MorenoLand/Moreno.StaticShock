@@ -37,10 +37,13 @@ im = Image(cfg.game_exe())
 rows = list(csv.DictReader(open(os.path.join(cfg.DATA, "functions.tsv"), encoding="utf-8"), delimiter="\t"))
 skip_cats = cfg.skip_categories()
 rows = [r for r in rows if r.get("category", "app") not in skip_cats]
-starts = sorted(int(r["ea"], 16) for r in rows)
-names = {int(r["ea"], 16): r["name"] for r in rows}
 SKIP = cfg.skip_functions()
 WRAP = cfg.wrap_functions()
+EXTRA = cfg.extra_functions()
+DATA = cfg.data_ranges()
+rows = [r for r in rows if not any(lo <= int(r["ea"], 16) < hi for lo, hi in DATA)]
+starts = sorted(int(r["ea"], 16) for r in rows)
+names = {int(r["ea"], 16): r["name"] for r in rows}
 code_map = None
 code_heads = None
 code_path = os.path.join(cfg.ida_dump(), "code.txt")
@@ -54,6 +57,7 @@ if os.path.exists(code_path):
             if cfg.CODE_LO <= ea < cfg.CODE_HI:
                 code_map[ea - cfg.CODE_LO] = 1
 lf = Lifter(im, starts, names, code_lo=cfg.CODE_LO, code_hi=cfg.CODE_HI, code_heads=code_heads)
+lf.calls.update(EXTRA)
 todo = [e for e in starts if (only is None or e in only) and e not in SKIP]
 
 t0 = time.time()
@@ -73,11 +77,94 @@ for e in todo:
         for _, t in lf.unsup[n0:]:
             mn[t.split()[0]] += 1
 
+# ---- Delphi exception frames ----
+# A try/except or try/finally pushes a 5-byte `jmp` stub on fs:[0]. The code at stub+5 is the
+# landing (except) or the finally body; the stub's installer owns it. Exception owners are wrapped
+# with a setjmp guard so jmp_ind can resume the landing without running their epilogue twice.
+sizes = {int(r["ea"], 16): int(r["size"]) for r in rows}
+
+
+def find_name(exact):
+    for ea, name in names.items():
+        if name == exact:
+            return ea
+    return None
+
+
+HANDLE_ANY = find_name("@@HandleAnyException")
+HANDLE_FIN = find_name("@@HandleFinally")
+ranges = sorted((ea, ea + max(1, sizes[ea]), ea) for ea in starts)
+
+
+def owner_at(addr):
+    best = None
+    for lo, hi, ea in ranges:
+        if lo <= addr < hi and (best is None or lo < best[0]):
+            best = (lo, ea)
+    if best:
+        return best[1]
+    if not starts:
+        return None
+    return starts[max(0, bisect.bisect_right(starts, addr) - 1)]
+
+
+code_bytes = im.read(cfg.CODE_LO, cfg.CODE_HI - cfg.CODE_LO)
+stub_targets = {}
+if HANDLE_ANY is not None or HANDLE_FIN is not None:
+    for i in range(len(code_bytes) - 5):
+        if code_bytes[i] != 0xE9:
+            continue
+        rel = struct.unpack_from("<i", code_bytes, i + 1)[0]
+        target = (cfg.CODE_LO + i + 5 + rel) & 0xFFFFFFFF
+        if target in (HANDLE_ANY, HANDLE_FIN):
+            stub_targets[cfg.CODE_LO + i] = target
+
+landings = {}
+finally_bodies = set()
+stub_users = {}
+
+
+def discover_exception_blocks():
+    changed = False
+    for stub, target in stub_targets.items():
+        pat = re.compile(r"/\* ([0-9a-f]{8}):[^\n]*0x%xu" % stub)
+        found = None
+        for ea, text in texts.items():
+            for m in pat.finditer(text):
+                insn = int(m.group(1), 16)
+                owner = owner_at(insn)
+                if owner is not None:
+                    found = (insn, owner, ea)
+                    break
+            if found:
+                break
+        if not found:
+            continue
+        stub_users[stub] = found
+        body = stub + 5
+        if target == HANDLE_ANY:
+            landings[body] = found[1]
+        else:
+            finally_bodies.add(body)
+        if body not in texts and body not in lf.calls:
+            lf.calls.add(body)
+            changed = True
+    return changed
+
+
+discover_exception_blocks()
+
+# Continuations listed in [lift].extra are reached by a register or memory jump, not by a call:
+# they resume through their owner's setjmp wrapper, otherwise the owner's epilogue runs twice.
+for _body in EXTRA:
+    _owner = owner_at(_body)
+    if _owner is not None:
+        landings.setdefault(_body, _owner)
+
 # Code addresses stored in data (vtables, initialiser tables, callbacks) that lie outside every known function are
 # functions the analysis missed. Lift them as well, but do not record their bytes as code: they may be jump tables.
 text_lo, text_hi = cfg.CODE_LO, cfg.CODE_HI
 guessed = set()
-sizes = {int(r["ea"], 16): int(r["size"]) for r in rows}
 
 
 def known_code(v):
@@ -120,6 +207,7 @@ print("data-referenced code addresses outside known functions:", len(lf.calls))
 extra_lifted = 0
 while True:
     pending = sorted(c for c in lf.calls if c not in texts and c not in set(starts) and c not in SKIP
+                     and not any(lo <= c < hi for lo, hi in DATA)
                      and im.read(c, 1) and (only is None or c in only))
     if not pending:
         break
@@ -138,10 +226,47 @@ while True:
                 mn[t.split()[0]] += 1
         extra_lifted += 1
 called = set(lf.calls)
-missing = sorted(c for c in called if c not in texts and c not in set(starts) and c not in SKIP)
+missing = sorted(c for c in called if c not in texts and c not in set(starts) and c not in SKIP
+                 and not any(lo <= c < hi for lo, hi in DATA))
 print("lifted %d functions (%d of them blocks called from other functions) in %.1fs; %d with unsupported instructions; %d call targets still unlifted"
       % (len(texts), extra_lifted, time.time() - t0, len(unsup_by_fn), len(missing)))
 print("unsupported mnemonics:", mn.most_common(40))
+
+# ---- wrap the owners of except landings for jmp_ind ----
+CLASS_CREATE = find_name("@@ClassCreate")
+wrap_ids = {}
+for landing, owner in landings.items():
+    if owner == CLASS_CREATE:
+        for ea, text in texts.items():
+            if ea != CLASS_CREATE and re.search(r"\bf_%08x\(\);" % CLASS_CREATE, text):
+                wrap_ids.setdefault(ea, []).append(CLASS_CREATE)
+    else:
+        wrap_ids.setdefault(owner, []).append(owner)
+
+for ea, ids in wrap_ids.items():
+    wrap_ids[ea] = list(dict.fromkeys(ids))
+
+wrapped = []
+for ea, ids in sorted(wrap_ids.items()):
+    if ea not in texts:
+        print("exception owner %08x is not lifted; landing cannot resume" % ea)
+        continue
+    old = "void f_%08x(void)" % ea
+    if old not in texts[ea]:
+        print("exception owner %08x has no plain entry; not wrapped" % ea)
+        continue
+    texts[ea] = texts[ea].replace(old, "void f_%08x_body(void)" % ea, 1)
+    inner = "f_%08x_body();" % ea
+    for i, owner_id in enumerate(reversed(ids)):
+        var = "lr%d_" % i
+        inner = ("rt_land_enter(&%s, 0x%08x); "
+                 "if (__builtin_setjmp(%s.jb)) { call_ind(rt_land_target); } else { %s } "
+                 "rt_land_leave(&%s);" % (var, owner_id, var, inner, var))
+    decls = " ".join("LandRec lr%d_;" % i for i in range(len(ids)))
+    texts[ea] += "\nvoid f_%08x(void)\n{\n    %s\n    %s\n}\n" % (ea, decls, inner)
+    wrapped.append(ea)
+if landings:
+    print("exception landings: %d, wrapped owners: %d" % (len(landings), len(wrapped)))
 
 keys = sorted(texts)
 written = set()
@@ -160,7 +285,9 @@ def emit_file(name, text):
 
 allf = sorted((set(starts) | set(missing) | set(texts)) - set(SKIP))
 NL = chr(10)
-emit_file("protos.h", '#include "rt.h"' + NL + "".join("void f_%08x(void);" % e + NL for e in allf) + "".join("void f_%08x_lifted(void);" % e + NL for e in sorted(WRAP)))
+emit_file("protos.h", '#include "rt.h"' + NL + "".join("void f_%08x(void);" % e + NL for e in allf)
+          + "".join("void f_%08x_body(void);" % e + NL for e in wrapped)
+          + "".join("void f_%08x_lifted(void);" % e + NL for e in sorted(WRAP)))
 cat = {int(r["ea"], 16): r.get("category", "app") for r in csv.DictReader(open(os.path.join(cfg.DATA, "functions.tsv"), encoding="utf-8"), delimiter="\t")}
 
 
@@ -216,7 +343,11 @@ have = set(keys) | SKIP | WRAP
 emit_file("stubs.c", '#include "protos.h"' + NL + "".join(
     'void f_%08x(void) { UNSUP(0x%08x, "function not lifted"); }' % (e, e) + NL for e in allf if e not in have))
 emit_file("dispatch.c", '#include "protos.h"' + NL + "const FnEnt fn_table[] = {" + NL + "".join(
-    "    {0x%08x, f_%08x}," % (e, e) + NL for e in allf) + "};" + NL + "const unsigned fn_count = %d;" % len(allf) + NL)
+    "    {0x%08x, f_%08x}," % (e, e) + NL for e in allf) + "};" + NL + "const unsigned fn_count = %d;" % len(allf) + NL
+    + "const LandEnt land_table[] = {" + NL + ("".join(
+        "    {0x%08x, 0x%08x}," % (landing, owner) + NL for landing, owner in sorted(landings.items()))
+        if landings else "    {0, 0}," + NL) + "};" + NL
+    + "const unsigned land_count = %d;" % len(landings) + NL)
 emit_file("unsupported.txt", "".join("%08x %08x %s" % (e, ad, t) + NL for e, lst in sorted(unsup_by_fn.items()) for ad, t in lst))
 for root, _, fs in os.walk(OUT):
     for f in fs:
