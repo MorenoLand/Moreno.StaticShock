@@ -70,6 +70,63 @@ def sources(include_driver=False):
     return files
 
 
+def write_image_blob():
+    blob = ROOT / "src" / "image.bin"
+    if not blob.exists():
+        sys.exit("src/image.bin is missing; run: python static_shock.py lift")
+    src = ROOT / "build" / "image_blob.c"
+    path = str(blob).replace("\\", "/").replace('"', '\\"')
+    text = ('__asm__(\n'
+            '".section .rodata\\n"\n'
+            '".global _rt_image_blob\\n"\n'
+            '".balign 16\\n"\n'
+            '"_rt_image_blob:\\n"\n'
+            '".incbin \\"' + path + '\\"\\n");\n')
+    if not src.exists() or src.read_text(encoding="utf-8") != text:
+        src.write_text(text, encoding="utf-8")
+    return src
+
+
+def windres_exe():
+    windres = next((p for p in (Path(cfg.mingw32()) / "bin" / "i686-w64-mingw32-windres.exe",
+                                Path(cfg.mingw32()) / "bin" / "windres.exe") if p.is_file()), None)
+    if windres is None:
+        found = shutil.which("i686-w64-mingw32-windres") or shutil.which("windres")
+        windres = Path(found) if found else None
+    return windres
+
+
+def mingw_path():
+    p = str(Path(cfg.mingw32()) / "bin")
+    if p not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = p + os.pathsep + os.environ.get("PATH", "")
+
+
+def build_resources():
+    value = cfg.BUILD_CFG.get("resources", "")
+    if value:
+        res = Path(value)
+        if not res.is_absolute():
+            res = ROOT / res
+    else:
+        found = sorted((ROOT / "recomp" / "data").glob("*.res"))
+        res = found[0] if found else None
+    if res is None:
+        return []
+    if not res.exists():
+        sys.exit("resources file not found: %s" % res)
+    windres = windres_exe()
+    if windres is None:
+        print("warning: windres not found; original resources are not linked", file=sys.stderr)
+        return []
+    out = ROOT / "build" / "resources.o"
+    args = [str(windres), "-i", str(res), "-J", "res", "-O", "coff"]
+    if "i686" not in windres.name:
+        args.append("--target=pe-i386")
+    subprocess.run(args + ["-o", str(out)], check=True)
+    return [out]
+
+
 def build_icon():
     icon = cfg.ICON
     rc = ROOT / "build" / "host.rc"
@@ -80,12 +137,13 @@ def build_icon():
             p = ROOT / p
         lines.append('1 ICON "%s"' % str(p).replace("\\", "\\\\"))
     rc.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    windres = Path(cfg.mingw32()) / "bin" / "i686-w64-mingw32-windres.exe"
-    if not windres.exists():
-        windres = Path(shutil.which("i686-w64-mingw32-windres") or "")
+    windres = windres_exe()
     out = ROOT / "build" / "host.res.o"
-    if windres.exists():
-        subprocess.run([str(windres), "-I", str(ROOT / "runtime"), str(rc), str(out)], check=True)
+    if windres:
+        args = [str(windres), "-I", str(ROOT / "runtime")]
+        if "i686" not in windres.name:
+            args.append("--target=pe-i386")
+        subprocess.run(args + [str(rc), str(out)], check=True)
         return out
     print("warning: windres not found; building without an icon/manifest", file=sys.stderr)
     return None
@@ -108,7 +166,9 @@ def main():
     if not cc.exists():
         sys.exit("i686-w64-mingw32-gcc not found; set build.mingw32 in project.toml")
 
+    mingw_path()
     write_project_header()
+    blob = write_image_blob()
     ensure_api()
 
     objects = []
@@ -117,7 +177,7 @@ def main():
     cflags = ["-c", "-fno-strict-aliasing"] + cfg.cflags() + [
         "-I" + str(ROOT / "runtime"), "-I" + str(ROOT / "src"),
         "-I" + str(ROOT / "recomp" / "data")]
-    for src in sources(args.driver):
+    for src in sources(args.driver) + [blob]:
         rel = src.relative_to(ROOT)
         obj = obj_dir / (str(rel).replace("\\", "_").replace("/", "_") + ".o")
         cmd = [str(cc)] + cflags + [str(src), "-o", str(obj)]
@@ -129,6 +189,7 @@ def main():
     res = build_icon()
     if res:
         objects.append(res)
+    objects += build_resources()
 
     base = cfg.IMAGE_BASE
     guest = base + 0x1000

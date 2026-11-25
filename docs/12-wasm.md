@@ -5,7 +5,9 @@ same `image.bin` build for wasm32. `runtime/wasm/` replaces the Win32 host; the 
 guest model do not change.
 
 No Win32 emulation is shipped. A port implements `wasm_lookup()` in `runtime/wasm/imports.c`;
-imports without an implementation abort with their `module!name`.
+imports without an implementation abort with their `module!name`. Concrete patterns for dynamic
+imports, memory MMIO, WAV playback, Web Audio, child windows and diagnostics are in
+[23-wasm-imports.md](23-wasm-imports.md).
 
 ## What the repository provides
 

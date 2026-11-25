@@ -187,16 +187,69 @@ void call_ind(u32 target)
 
 /* Delphi MakeObjectInstance thunk: E8 rel32 -> block: 59 (pop ecx) E9 rel32 (StdWndProc). The 8-byte TMethod
  * record (method, instance) sits at thunk+5 and StdWndProc expects its address in ECX. */
-static int delphi_thunk(u32 target)
+int rt_is_thunk(u32 target)
 {
     if (!rt_readable(target, 13) || R8(target) != 0xE8) return 0;
     u32 block = target + 5 + R32(target + 1);
     if (!rt_readable(block, 6) || R8(block) != 0x59 || R8(block + 1) != 0xE9) return 0;
+    return rt_readable(block + 6 + R32(block + 2), 1);
+}
+
+static int delphi_thunk(u32 target)
+{
+    if (!rt_is_thunk(target)) return 0;
+    u32 block = target + 5 + R32(target + 1);
     u32 proc = block + 6 + R32(block + 2);
-    if (!rt_readable(proc, 1)) return 0;
     r_ecx = target + 5;
     call_ind(proc);
     return 1;
+}
+
+/* ---- Delphi exception landings (see rt.h) ---- */
+LandRec *rt_land_top;
+u32 rt_land_target;
+
+void rt_land_enter(LandRec *r, u32 owner)
+{
+    r->owner = owner;
+    r->esp = r_esp;
+    r->prev = rt_land_top;
+    rt_land_top = r;
+}
+
+void rt_land_leave(LandRec *r)
+{
+    rt_land_top = r->prev;
+}
+
+static int cmp_land(const void *k, const void *e)
+{
+    u32 a = *(const u32 *)k, b = ((const LandEnt *)e)->addr;
+    return a < b ? -1 : a > b;
+}
+
+void jmp_ind(u32 t)
+{
+    if ((t & 0xFF000000u) != 0xFE000000u && land_count) {
+        const LandEnt *le = bsearch(&t, land_table, land_count, sizeof(LandEnt), cmp_land);
+        if (le) {
+            u32 record = R32(rt_teb);
+            for (LandRec *r = rt_land_top; r; r = r->prev) {
+                if (r->owner == le->owner && r->esp > record) {
+                    rt_land_target = t;
+                    rt_land_top = r;
+                    if (getenv("RECOMP_EXLOG"))
+                        fprintf(stderr, "[exc] landing %08x in %08x (frame %08x)\n", t, le->owner, record);
+                    __builtin_longjmp(r->jb, 1);
+                }
+            }
+            fprintf(stderr, "exception landing %08x: no active %08x on the guest stack (frame %08x)\n", t, le->owner, record);
+            for (LandRec *r = rt_land_top; r; r = r->prev)
+                fprintf(stderr, "      active owner %08x entry esp %08x\n", r->owner, r->esp);
+            rt_unsup(t, "exception landing without an active owner function");
+        }
+    }
+    call_ind(t);
 }
 
 #if !defined(__EMSCRIPTEN__)

@@ -14,3 +14,7 @@ absent.
 
 `python tests/run_wasm_test.py` builds the wasm host and `tests/wasm/host_test.c` with Emscripten and
 runs it under Node. It needs emcc (`[wasm].emcc`, `SS_EMCC` or `build/emsdk`) and Node.
+
+`python tests/difftest_cli.py --original <exe> --host <host> --fixtures <dir> --cases <json>`
+compares exit code, stdout, stderr and every output file for fixed CLI cases. `tests/diff_corpus.py`
+does the same for a folder of inputs. Both run each side in a fresh folder.

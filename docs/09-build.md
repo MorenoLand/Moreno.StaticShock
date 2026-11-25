@@ -29,6 +29,9 @@ and links with:
 - `.guest` is the reserved guest range. `guest_pad.c` expands it to the start of `.text`, and
   `rt_load_image` fills the data pieces.
 - `.tail` covers the rest of the guest address space the program may allocate.
+- `.guest`, `.tail` and `guest_pad.c` are bss: the loader maps them zero-filled and the file stores
+  no bytes. `.guest` reserves exactly `guest_size`, `.tail` exactly `tail_size`; do not let one
+  include the other or the linker reports overlapping LMAs.
 - `.text` is the host code; it must start after the guest range.
 - `rt_preentry` reserves the range before the CRT creates its stack and locale mappings, then calls
   `mainCRTStartup`.
@@ -57,6 +60,14 @@ guest's 32-bit registers.
 `build_wasm.py` compiles the same `src/` and `image.bin` with Emscripten. The guest range is reserved
 below `GLOBAL_BASE`; the native linker layout above does not apply. See `docs/12-wasm.md` for the
 memory layout, build flags and the per-target import hook.
+
+## Image and resources
+
+`build.py` writes `build/image_blob.c`, which embeds `src/image.bin` in `.rodata` as
+`rt_image_blob`, so the host can map the data image at its original addresses. If
+`recomp/data/*.res` exists (or `[build].resources` names one), it is linked with `windres -J res`,
+so `FindResource`/`LoadResource` see the original forms, icons and string tables.
+`pipeline/extract_res.py` writes that `.res` from the PE resource directory.
 
 ## Reproducibility
 
