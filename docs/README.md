@@ -26,5 +26,6 @@
 | [21-rtti.md](21-rtti.md) | MSVC RTTI classes, vtables, base classes and vfunc slots. |
 | [22-delphi.md](22-delphi.md) | Delphi/VCL detection, VMT and dynamic methods, SEH, DFM resources, thunks and verification. |
 | [23-wasm-imports.md](23-wasm-imports.md) | Per-port wasm import patterns: dynamic imports, MMIO, audio, child windows, diagnostics. |
+| [24-porting-fidelity.md](24-porting-fidelity.md) | Taking a checked C lift to another language at 1:1 fidelity. |
 
 Start with the overview and the checklist. Everything else is reference material.

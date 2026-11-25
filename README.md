@@ -49,7 +49,7 @@ original machine code are used at run time.
 | **RTTI** | MSVC type descriptors, complete object locators, vtables, base classes and positional vfunc slots. |
 | **Evidence** | Target manifest, machine-readable inventory, claim schema, unknowns registry and a fail-closed readiness report. |
 | **Workflow** | Per-function work status and a self-contained HTML progress dashboard. |
-| **Docs** | 24 focused guides: model, lifting, ABI, host, build, debugging, porting, WASM, Delphi, x86-64, naming, evidence, verification. |
+| **Docs** | 25 focused guides: model, lifting, ABI, host, build, debugging, porting, WASM, Delphi, x86-64, naming, evidence, verification. |
 
 ## Pipeline
 
