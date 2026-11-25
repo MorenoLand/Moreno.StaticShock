@@ -11,9 +11,16 @@ the project uses semantic versioning for the pipeline.
   queue, chunked preload shell, Emscripten build and a Node host test.
 - Delphi/VCL support: SEH continuations and `pop reg; jmp reg` returns in the lifter, optional IDA
   code map, shared flag state, `fbstp` BCD, TLS block setup, window-procedure identity translation,
-  MakeObjectInstance thunks, Delphi exception reporting and `docs/22-delphi.md`.
+  MakeObjectInstance thunks, a guest SEH bridge (`RaiseException`/`RtlUnwind`), exception landings
+  with `jmp_ind`/`LandRec`, Delphi exception reporting and `docs/22-delphi.md`.
 - Build embeds `src/image.bin` as `rt_image_blob` and links extracted `.res` resources; `windres`
-  fallback no longer treats an empty path as a compiler.
+  fallback no longer treats an empty path as a compiler; `.guest`/`.tail` are bss-only.
+- Console hosts keep stdout/stderr clean: boot diagnostics are behind `RECOMP_BOOT_LOG`, arguments
+  are passed through and `RECOMP_DIR` selects a data folder.
+- `[lift].extra` registers jump-only continuations; `[lift].data` keeps IDA functions that are data
+  in the image without lifting them.
+- `pipeline/split_pseudo.py` writes one pseudocode file per function; `asm/` and `pseudo/` are kept
+  in the workspace.
 - Dispatcher drops skipped functions; the code map accepts unaligned VMT thunks; `gen_api.py`
   honours `[imports.nargs]`; continuation discovery accepts argument pushes and stays inside the
   code map; file-dialog hooks and heap MakeObjectInstance thunks are trampolined.

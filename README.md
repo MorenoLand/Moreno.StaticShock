@@ -105,6 +105,7 @@ flowchart TB
    python static_shock.py rtti
    python static_shock.py lift
    python static_shock.py asm
+   python pipeline/split_pseudo.py
    python static_shock.py api
    python static_shock.py build
    ```

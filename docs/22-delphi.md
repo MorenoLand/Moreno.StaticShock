@@ -118,6 +118,40 @@ Unhandled Delphi exceptions raise `0x0eedfade`. Exception information 1 is the e
 its message pointer is at `+4` (a Delphi string with its length at `-4`). `boot.c` prints that
 message before the register and stack report.
 
+The `RaiseException`/`RtlUnwind` imports must not reach kernel32: Windows would walk the host TEB and
+never see the guest's frames. The runtime walks the guest `fs:[0]` chain, builds the record and
+context on the guest stack, and calls each handler with `gcall`. `SetUnhandledExceptionFilter` stores
+the guest filter and the raise path calls it when no frame matches.
+
+## Exception landings
+
+A `try/except` frame installs a 5-byte `jmp` stub to the RTL dispatcher; the code at `stub + 5` is
+the landing. The generator resolves the dispatcher by name, scans `.text` for those stubs, lifts the
+landing as a block and records `landing -> owner`. The owner function is renamed to
+`f_XXXX_body` and wrapped:
+
+```c
+LandRec lr0_;
+rt_land_enter(&lr0_, 0xOWNER);
+if (__builtin_setjmp(lr0_.jb)) { call_ind(rt_land_target); }
+else { f_XXXX_body(); }
+rt_land_leave(&lr0_);
+```
+
+`jmp_ind` longjmps to the innermost active owner instead of tail-calling the landing, so the owner's
+epilogue runs once. `[lift].extra` registers continuations reached only by a register or memory
+jump in the same table; without it, such a continuation runs its epilogue twice with the wrong EBP.
+
+`@@ClassCreate` installs a frame for its caller, so every function whose text calls it is wrapped
+with the `@@ClassCreate` group id.
+
+## Console hosts
+
+A console target must match stdout, stderr and the exit code. Gate host diagnostics behind
+`RECOMP_BOOT_LOG`; a recompiled console tool that prints `boot: image mapped` fails every
+differential case. Do not consume `argv[1]` as a data folder: keep the working directory and pass
+all arguments through. Use `RECOMP_DIR` when a folder is genuinely required.
+
 ## Message loop
 
 VCL blocks in `GetMessage`/`MsgWaitForMultipleObjects`. The host must present the same top-level

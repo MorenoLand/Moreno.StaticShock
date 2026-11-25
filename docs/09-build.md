@@ -29,6 +29,9 @@ and links with:
 - `.guest` is the reserved guest range. `guest_pad.c` expands it to the start of `.text`, and
   `rt_load_image` fills the data pieces.
 - `.tail` covers the rest of the guest address space the program may allocate.
+- `.guest`, `.tail` and `guest_pad.c` are bss: the loader maps them zero-filled and the file stores
+  no bytes. `.guest` reserves exactly `guest_size`, `.tail` exactly `tail_size`; do not let one
+  include the other or the linker reports overlapping LMAs.
 - `.text` is the host code; it must start after the guest range.
 - `rt_preentry` reserves the range before the CRT creates its stack and locale mappings, then calls
   `mainCRTStartup`.
