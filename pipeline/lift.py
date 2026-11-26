@@ -279,6 +279,7 @@ class Lifter:
                     if bad > 1:
                         break
         scan(1, 1024)
+        scan(-1, 16)
         return out
 
     # ---- semantics: returns (uses, defs, may_def_only, code builder) ----

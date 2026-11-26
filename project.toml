@@ -9,6 +9,8 @@ host_exe    = "TargetHost.exe"
 host_name   = "Target"
 image_base  = 0x400000
 entry       = 0x401000
+# PE entry when the real start is elsewhere (a protector stub); 0 = entry.
+pe_entry    = 0
 code_lo     = 0x401000
 code_hi     = 0x680000
 image_end   = 0xA40000
@@ -27,6 +29,8 @@ heap    = 0x10000000
 
 [imports]
 cdecl_modules = ["msvcr80", "msvcp80", "openal32", "freetype6"]
+# Import names that are variables, not functions (bound to the real address, never a call sentinel).
+data = []
 libs = ["libkernel32.a", "libuser32.a", "libgdi32.a", "libshell32.a", "libole32.a",
         "libwinmm.a", "libcomdlg32.a", "libadvapi32.a", "libwinspool.a", "libdbghelp.a"]
 # Argument counts for cdecl imports that are not exported with a decorated name in the MinGW import libraries.

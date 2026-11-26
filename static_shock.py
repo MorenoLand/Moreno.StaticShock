@@ -99,8 +99,8 @@ def doctor():
                 wip("x64 backend: PE32+ parsing/config only; lifter, runtime ABI and build are not implemented")
             if im.base != cfg.IMAGE_BASE:
                 fail("project.image_base 0x%x != PE base 0x%x" % (cfg.IMAGE_BASE, im.base))
-            if im.entry != cfg.OEP:
-                fail("project.entry 0x%x != PE entry 0x%x" % (cfg.OEP, im.entry))
+            if im.entry != cfg.PE_ENTRY:
+                fail("project.pe_entry 0x%x != PE entry 0x%x" % (cfg.PE_ENTRY, im.entry))
             if not (im.base <= cfg.CODE_LO < cfg.CODE_HI <= im.base + im.image_size):
                 fail("code_lo/code_hi are outside the PE image")
             if cfg.IMAGE_END < im.base + im.image_size:

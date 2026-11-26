@@ -39,6 +39,8 @@ extern const ApiStatic api_static[];
 extern const int api_static_n;
 extern const NameArgs name_args[];       /* GL and similar names looked up with GetProcAddress */
 extern const int name_args_n;
+extern const char *const api_data_names[];   /* imports that are variables, not functions */
+extern const int api_data_n;
 
 void api_dispatch(u32 sentinel);
 u32 api_add(const char *module, const char *name, FARPROC fn, int nargs, int cdecl_);

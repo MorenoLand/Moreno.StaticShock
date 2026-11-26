@@ -45,6 +45,7 @@ HOST_EXE = PROJECT.get("host_exe", "host.exe")
 HOST_NAME = PROJECT.get("host_name", NAME)
 IMAGE_BASE = _int(PROJECT.get("image_base"), 0x400000)
 OEP = _int(PROJECT.get("entry"), IMAGE_BASE + 0x1000)
+PE_ENTRY = _int(PROJECT.get("pe_entry"), OEP)
 CODE_LO = _int(PROJECT.get("code_lo"), IMAGE_BASE + 0x1000)
 CODE_HI = _int(PROJECT.get("code_hi"), IMAGE_BASE + 0x100000)
 IMAGE_END = _int(PROJECT.get("image_end"), IMAGE_BASE + 0x1000000)
@@ -181,6 +182,10 @@ def cdecl_modules():
 
 def import_nargs():
     return IMPORT_CFG.get("nargs", {})
+
+
+def import_data():
+    return {str(x) for x in IMPORT_CFG.get("data", [])}
 
 
 def skip_categories():

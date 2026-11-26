@@ -6,6 +6,9 @@ Before touching the lifter, establish these facts. They go into `project.toml`.
 
 - `ImageBase` (DOS header -> PE -> optional header +28)
 - `AddressOfEntryPoint` (optional header +16), absolute = image base + RVA
+- If a protector stub owns the PE entry, set `project.pe_entry` to that value and `project.entry` to
+  the real start (CRT startup or `WinMain`); `doctor` checks `pe_entry` against the header, while the
+  host boots from `entry`.
 - `SizeOfImage`, section table, and which section is executable
 - imports: module, IAT slot, name or ordinal
 - resources and the data you must embed

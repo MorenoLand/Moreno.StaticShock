@@ -77,6 +77,19 @@ for e in todo:
         for _, t in lf.unsup[n0:]:
             mn[t.split()[0]] += 1
 
+# A guessed block can branch outside the bytes that were decoded: refuse it instead of emitting a
+# goto to a label that does not exist.
+def labels_ok(text):
+    gotos = set(re.findall(r"goto (L_[0-9a-f]+);", text))
+    labels = set(re.findall(r"^(L_[0-9a-f]+):", text, re.MULTILINE))
+    return gotos <= labels
+
+
+for e, text in list(texts.items()):
+    if not labels_ok(text):
+        texts[e] = 'void f_%08x(void) { UNSUP(0x%08x, "branch outside decoded block"); }' % (e, e)
+        unsup_by_fn[e] = [(e, "branch outside decoded block")]
+
 # ---- Delphi exception frames ----
 # A try/except or try/finally pushes a 5-byte `jmp` stub on fs:[0]. The code at stub+5 is the
 # landing (except) or the finally body; the stub's installer owns it. Exception owners are wrapped

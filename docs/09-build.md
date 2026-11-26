@@ -69,6 +69,13 @@ memory layout, build flags and the per-target import hook.
 so `FindResource`/`LoadResource` see the original forms, icons and string tables.
 `pipeline/extract_res.py` writes that `.res` from the PE resource directory.
 
+## Compile cache
+
+`build.py` keys each object by a SHA-256 of the source, every header under `runtime/`, `src/` and
+`recomp/data/`, and the compiler flags. A changed struct in a header rebuilds every object that
+includes it; an mtime-only cache does not. `--jobs` or `SS_JOBS` sets the worker count. A link that
+returns 0 but leaves no host executable is a failed build.
+
 ## Reproducibility
 
 - Keep `project.toml` under version control; it is the build description.
