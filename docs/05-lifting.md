@@ -108,6 +108,17 @@ guest registers, then exits. Work through the list:
 
 Do not replace an unsupported instruction with a no-op to make a build pass.
 
+## Jump tables and block boundaries
+
+- A jump table may be indexed with a negative value: MSVC's `memcpy` tail table is addressed as
+  `jmp [ecx*4+disp]` with `ecx = size - 4`, so entries live before `disp`. `read_table` scans forward
+  and up to 16 entries backward; the emitted switch dispatches on the loaded address, so a superset
+  is harmless.
+- A guessed block can branch outside the bytes that were decoded. The generator checks every
+  `goto L_x` against the emitted labels; a missing label becomes `UNSUP`, never a broken function.
+- Continuations reached only by a register or memory jump are listed in `[lift].extra` and registered
+  as exception landings; do not wait for a crash to discover them one at a time.
+
 ## Extending the lifter
 
 - Operand helpers (`read`, `write`, `addr_expr`) handle registers, immediates and memory.

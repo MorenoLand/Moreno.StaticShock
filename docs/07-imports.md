@@ -16,6 +16,35 @@ function is called by `host_call`, which reads the arguments from the guest stac
 `pipeline/make_api.py` fills `api_table.json` with `nargs` and `conv`; `gen_api.py` turns it into
 `api_gen.c`. Unknown cdecl counts must be set in `[imports].nargs` in `project.toml`.
 
+## Data imports
+
+An IAT slot can point at a variable rather than a function (`_acmdln`, `c_dfDIKeyboard`, format
+tables). Binding it to a call sentinel makes the guest read `0xC3C3C3C3` and fault. List those names
+in `[imports].data`; `gen_api.py` emits `api_data_names`, and the binder writes the real address of
+the variable instead of a sentinel. A missing data import is fatal, not a warning.
+
+```toml
+[imports]
+data = ["c_dfDIKeyboard"]
+```
+
+## Host COM objects
+
+DirectX 8/9 objects do not fit the function-sentinel model:
+
+- their methods are C functions with `this` as the **first stack argument** and callee cleanup; a
+  normal `thiscall` bridge does not match;
+- the guest needs a guest-side vtable, so each interface is a proxy whose slots are sentinels with
+  their own argument counts;
+- proxy arguments passed back to the real DLL must be translated proxy→host;
+- `CreateDevice`, `CreateTexture`, `CreateSoundBuffer`, `GetBackBuffer`, `QueryInterface` and the
+  other out-parameters return new interfaces, which must be wrapped before returning to the guest.
+
+`QueryInterface` needs a GUID→interface table generated from the SDK headers. This layer is a
+per-target bridge (`runtime/com.c`, `pipeline/gen_com.py` in ports that need it); the template does
+not ship one. Document the interfaces the target actually uses and generate the slot table from the
+headers rather than typing argument counts by hand.
+
 ## Guest pointers
 
 A guest pointer is a host pointer in the 32-bit build, but the function may still expect a

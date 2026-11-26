@@ -88,6 +88,7 @@ void rt_land_leave(LandRec *r);
 void rt_reraise(void);
 u32 gcall(u32 addr, u32 ecx_value, int cdecl_, int n, ...);   /* api.c: call the guest function at addr from native code; ecx for a thiscall, cdecl_ = 1 when the caller removes the n 32-bit arguments; returns eax.
                                                                   Declared here and not in api.h, which includes <windows.h> on Windows: the host bridges (src/host) must not. */
+extern const char *rt_last_api;                 /* crash reports: the last import dispatched */
 
 typedef struct { u32 addr; void (*fn)(void); } FnEnt;
 extern const FnEnt fn_table[];

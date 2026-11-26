@@ -33,6 +33,7 @@ static DWORD ts_index = TLS_OUT_OF_INDEXES;
 static pthread_mutex_t gil = PTHREAD_MUTEX_INITIALIZER;
 #endif
 int rt_trace;
+const char *rt_last_api;
 
 typedef struct {
     u32 saved_esp; int in_api; u32 stack_lo, stack_top, teb;
@@ -410,6 +411,7 @@ void api_dispatch(u32 sentinel)
 {
     int idx = (int)((sentinel - API_BASE) >> 4);
     ApiEnt *e = &api_tab[idx];
+    rt_last_api = e->name;
     if (idx >= 0 && idx < MAX_API) ++api_call_count[idx];
     sample_start();                                  /* RECOMP_SAMPLE: from the first system call on, so a hang before the message loop shows too */
     u32 a[32];

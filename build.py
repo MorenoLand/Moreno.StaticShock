@@ -5,10 +5,12 @@ Generates runtime/project.h from project.toml, collects src/ and runtime/, compi
 with the 32-bit MinGW compiler, and links the host with the guest/tail/text section layout.
 """
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -149,10 +151,35 @@ def build_icon():
     return None
 
 
+def header_digest():
+    h = hashlib.sha256()
+    for base in (ROOT / "runtime", ROOT / "src", ROOT / "recomp" / "data"):
+        if not base.exists():
+            continue
+        for p in sorted(base.rglob("*.h")):
+            h.update(str(p.relative_to(ROOT)).encode("utf-8"))
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def compile_one(cc, cflags, src, hdr):
+    rel = src.relative_to(ROOT)
+    obj = ROOT / "build" / "obj" / (str(rel).replace("\\", "_").replace("/", "_") + ".o")
+    obj.parent.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(src.read_bytes() + hdr.encode("utf-8") + " ".join(cflags).encode("utf-8")).hexdigest()
+    stamp = obj.with_suffix(obj.suffix + ".sha")
+    if obj.exists() and stamp.exists() and stamp.read_text(encoding="utf-8") == key:
+        return src, obj, 0, ""
+    r = subprocess.run([str(cc)] + cflags + [str(src), "-o", str(obj)], capture_output=True, text=True)
+    if r.returncode == 0:
+        stamp.write_text(key, encoding="utf-8")
+    return src, obj, r.returncode, r.stdout + r.stderr
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--driver", action="store_true", help="build the differential driver instead of the client")
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    ap.add_argument("--jobs", type=int, default=int(os.environ.get("SS_JOBS", os.cpu_count() or 1)))
     args = ap.parse_args()
 
     if cfg.ARCH != "x86":
@@ -177,14 +204,14 @@ def main():
     cflags = ["-c", "-fno-strict-aliasing"] + cfg.cflags() + [
         "-I" + str(ROOT / "runtime"), "-I" + str(ROOT / "src"),
         "-I" + str(ROOT / "recomp" / "data")]
-    for src in sources(args.driver) + [blob]:
-        rel = src.relative_to(ROOT)
-        obj = obj_dir / (str(rel).replace("\\", "_").replace("/", "_") + ".o")
-        cmd = [str(cc)] + cflags + [str(src), "-o", str(obj)]
-        r = subprocess.run(cmd)
-        if r.returncode:
-            sys.exit("compile failed: %s" % src)
-        objects.append(obj)
+    files = sources(args.driver) + [blob]
+    hdr = header_digest()
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        for src, obj, code, output in pool.map(lambda f: compile_one(cc, cflags, f, hdr), files):
+            if code:
+                print(output[:4000])
+                sys.exit("compile failed: %s" % src)
+            objects.append(obj)
 
     res = build_icon()
     if res:
@@ -216,8 +243,8 @@ def main():
     link += ["-l" + lib for lib in cfg.host_libs()]
 
     r = subprocess.run(link)
-    if r.returncode:
-        sys.exit("link failed")
+    if r.returncode or not host.exists():
+        sys.exit("link failed: %s" % host)
     print("built %s" % host)
 
 

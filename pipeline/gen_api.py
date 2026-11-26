@@ -35,4 +35,9 @@ with open(os.path.join(cfg.RT, "api_gen.c"), "w", encoding="utf-8") as o:
     for k in sorted(names):
         o.write('    {"%s", %d},\n' % (k, names[k]))
     o.write("};\nconst int name_args_n = %d;\n" % len(names))
-print("api entries %d, names %d" % (len(api), len(names)))
+    data = sorted(cfg.import_data())
+    o.write("\nconst char *const api_data_names[] = {\n")
+    for name in data:
+        o.write('    "%s",\n' % name)
+    o.write("};\nconst int api_data_n = %d;\n" % len(data))
+print("api entries %d, names %d, data %d" % (len(api), len(names), len(cfg.import_data())))

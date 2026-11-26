@@ -50,6 +50,7 @@ static LONG WINAPI on_crash(EXCEPTION_POINTERS *e)
             e->ExceptionRecord->NumberParameters > 0 && e->ExceptionRecord->ExceptionInformation[0] ? "write" : "read",
             e->ExceptionRecord->NumberParameters > 1 ? (void *)e->ExceptionRecord->ExceptionInformation[1] : NULL,
             r_esp, r_eax, r_ecx, r_ebp, r_esi, r_edi, r_edx, r_ebx);
+    if (rt_last_api) fprintf(stderr, "      last import: %s\n", rt_last_api);
     if ((e->ExceptionRecord->ExceptionCode & 0xffffffffu) == 0x0eedfadeu && e->ExceptionRecord->NumberParameters > 1) {
         u32 obj = (u32)e->ExceptionRecord->ExceptionInformation[1];
         u32 s = obj ? *(u32 *)(uintptr_t)(obj + 4) : 0;
@@ -204,6 +205,17 @@ int main(int argc, char **argv)
         FARPROC fn = (m && !silent) ? GetProcAddress(m, s->name) : NULL;
         if (!fn && m && s->name[0] == '#') fn = GetProcAddress(m, (LPCSTR)MAKEINTRESOURCEA(atoi(s->name + 1)));
         if (!fn) fprintf(stderr, "warning: import %s!%s not found\n", s->module, s->name);
+        int is_data = 0;
+        for (int k = 0; k < api_data_n; ++k)
+            if (!strcmp(api_data_names[k], s->name)) { is_data = 1; break; }
+        if (is_data) {                              /* a variable (format table and the like): bind its address */
+            if (!fn) {
+                fprintf(stderr, "error: data import %s!%s not found\n", s->module, s->name);
+                return 4;
+            }
+            W32(s->ea, (u32)(uintptr_t)fn);
+            continue;
+        }
         if (!strcmp(s->name, "_acmdln")) {          /* data export: the guest reads the variable, not a function */
             W32(s->ea, (u32)(uintptr_t)fn);
             continue;

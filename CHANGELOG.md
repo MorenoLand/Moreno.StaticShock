@@ -26,6 +26,12 @@ the project uses semantic versioning for the pipeline.
   code map; file-dialog hooks and heap MakeObjectInstance thunks are trampolined.
 - `docs/23-wasm-imports.md` records the wasm import patterns: dynamic imports, memory MMIO, WAV and
   Web Audio, child windows and diagnostics.
+- Data imports (`[imports].data`) are bound to the real variable address instead of a call sentinel;
+  `project.pe_entry` separates the PE entry from the real start.
+- Jump tables read negative-index entries; a guessed block whose `goto` has no label becomes `UNSUP`.
+- The native build caches objects by content hash including every header, honours `SS_JOBS`, and
+  treats a missing host executable after a zero-exit link as a failure.
+- Crash reports name the last import dispatched.
 
 ## [0.1.0] - 2026-11-21
 
